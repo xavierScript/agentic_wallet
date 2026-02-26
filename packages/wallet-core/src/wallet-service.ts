@@ -7,7 +7,7 @@ import {
   type TransactionSignature,
 } from "@solana/web3.js";
 import { KeyManager, type KeystoreEntry } from "./key-manager.js";
-import { PolicyEngine, type Policy } from "./policy-engine.js";
+import { PolicyEngine, type Policy } from "./guardrails/policy-engine.js";
 import { AuditLogger } from "./audit-logger.js";
 import { SolanaConnection } from "./connection.js";
 
@@ -264,6 +264,14 @@ export class WalletService {
 
   /**
    * Sign and send a versioned transaction (used by Jupiter, etc.)
+   *
+   * Policy rate limits and spend caps are enforced before signing.
+   * Program allowlist checks are skipped since VersionedTransaction
+   * instruction decoding requires the on-chain lookup tables.
+   *
+   * @param estimatedLamports - Best-effort spend amount used for daily-cap
+   *   enforcement. Pass the raw SOL input amount (in lamports) when the input
+   *   token is SOL; pass 0 for non-SOL swaps (rate/cooldown still enforced).
    */
   async signAndSendVersionedTransaction(
     walletId: string,
@@ -271,7 +279,24 @@ export class WalletService {
     context: { action: string; details?: Record<string, unknown> } = {
       action: "versioned-transaction",
     },
+    estimatedLamports: number = 0,
   ): Promise<TransactionSignature> {
+    // Policy check — rate limits, cooldown, and spend cap (no program checks)
+    const violation = this.policyEngine.checkLimits(
+      walletId,
+      estimatedLamports,
+    );
+    if (violation) {
+      this.auditLogger.log({
+        action: context.action,
+        walletId,
+        success: false,
+        error: `Policy violation: ${violation}`,
+        details: context.details,
+      });
+      throw new Error(`Policy violation: ${violation}`);
+    }
+
     const keypair = this.keyManager.unlockWallet(walletId);
 
     try {
@@ -301,7 +326,7 @@ export class WalletService {
         details: context.details,
       });
 
-      this.policyEngine.recordTransaction(walletId);
+      this.policyEngine.recordTransaction(walletId, estimatedLamports);
 
       return signature;
     } catch (error: any) {

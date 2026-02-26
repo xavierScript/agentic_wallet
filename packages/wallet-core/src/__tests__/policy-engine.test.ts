@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { PolicyEngine, type Policy } from "../policy-engine.js";
+import { PolicyEngine, type Policy } from "../guardrails/policy-engine.js";
 import {
   Transaction,
   SystemProgram,
@@ -235,6 +235,89 @@ describe("PolicyEngine", () => {
       expect(rule.allowedPrograms).toContain(
         "11111111111111111111111111111111",
       );
+    });
+  });
+
+  describe("checkLimits — versioned transaction guardrails", () => {
+    it("should allow transactions under the per-tx lamport cap", () => {
+      const policy: Policy = {
+        id: "p-vt1",
+        name: "test",
+        rules: [{ name: "cap", maxLamportsPerTx: LAMPORTS_PER_SOL }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt1", policy);
+      expect(engine.checkLimits("vt1", 0.5 * LAMPORTS_PER_SOL)).toBeNull();
+    });
+
+    it("should block transactions over the per-tx lamport cap", () => {
+      const policy: Policy = {
+        id: "p-vt2",
+        name: "test",
+        rules: [{ name: "cap", maxLamportsPerTx: LAMPORTS_PER_SOL }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt2", policy);
+      const violation = engine.checkLimits("vt2", 3 * LAMPORTS_PER_SOL);
+      expect(violation).toContain("exceeds max");
+    });
+
+    it("should enforce rate limits for versioned transactions", () => {
+      const policy: Policy = {
+        id: "p-vt3",
+        name: "test",
+        rules: [{ name: "rate", maxTxPerHour: 2 }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt3", policy);
+      engine.recordTransaction("vt3");
+      engine.recordTransaction("vt3");
+      const violation = engine.checkLimits("vt3", 0);
+      expect(violation).toContain("Rate limit exceeded");
+    });
+
+    it("should enforce cooldown for versioned transactions", () => {
+      const policy: Policy = {
+        id: "p-vt4",
+        name: "test",
+        rules: [{ name: "cool", cooldownMs: 60_000 }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt4", policy);
+      engine.recordTransaction("vt4");
+      const violation = engine.checkLimits("vt4", 0);
+      expect(violation).toContain("Cooldown active");
+    });
+
+    it("should enforce daily spend cap for versioned transactions", () => {
+      const policy: Policy = {
+        id: "p-vt5",
+        name: "test",
+        rules: [{ name: "daily", maxDailySpendLamports: 2 * LAMPORTS_PER_SOL }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt5", policy);
+      engine.recordTransaction("vt5", 1.5 * LAMPORTS_PER_SOL);
+      const violation = engine.checkLimits("vt5", LAMPORTS_PER_SOL);
+      expect(violation).toContain("Daily spend limit");
+    });
+
+    it("should allow when no policy is attached", () => {
+      expect(
+        engine.checkLimits("no-policy-wallet", 999 * LAMPORTS_PER_SOL),
+      ).toBeNull();
+    });
+
+    it("should skip per-tx cap when estimatedLamports is 0", () => {
+      const policy: Policy = {
+        id: "p-vt6",
+        name: "test",
+        rules: [{ name: "cap", maxLamportsPerTx: LAMPORTS_PER_SOL }],
+        createdAt: new Date().toISOString(),
+      };
+      engine.attachPolicy("vt6", policy);
+      // 0 means unknown amount — should not trigger amount cap
+      expect(engine.checkLimits("vt6", 0)).toBeNull();
     });
   });
 });

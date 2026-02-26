@@ -7,7 +7,11 @@
 
 export { KeyManager, type KeystoreEntry } from "./key-manager.js";
 export { WalletService, type WalletInfo } from "./wallet-service.js";
-export { PolicyEngine, type Policy, type PolicyRule } from "./policy-engine.js";
+export {
+  PolicyEngine,
+  type Policy,
+  type PolicyRule,
+} from "./guardrails/index.js";
 export { AuditLogger, type AuditLogEntry } from "./audit-logger.js";
 export {
   TransactionBuilder,

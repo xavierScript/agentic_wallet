@@ -157,6 +157,13 @@ export function registerSwapTokensTool(
         .map((r) => r.swapInfo.label || "Unknown")
         .filter((label, i, arr) => arr.indexOf(label) === i);
 
+      // When the input token is SOL, rawAmount is already in lamports — pass it
+      // so the policy engine can enforce per-tx and daily spend caps.
+      // For non-SOL inputs we can't trivially express the value in lamports, so
+      // we pass 0 (rate limits and cooldown still apply fully).
+      const SOL_MINT = "So11111111111111111111111111111111111111112";
+      const estimatedLamports = inputMint === SOL_MINT ? Number(rawAmount) : 0;
+
       try {
         const signature = await walletService.signAndSendVersionedTransaction(
           wallet_id,
@@ -175,6 +182,7 @@ export function registerSwapTokensTool(
               route: routeLabels,
             },
           },
+          estimatedLamports,
         );
 
         return {

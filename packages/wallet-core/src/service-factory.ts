@@ -7,7 +7,7 @@
 
 import { KeyManager } from "./key-manager.js";
 import { WalletService } from "./wallet-service.js";
-import { PolicyEngine } from "./policy-engine.js";
+import { PolicyEngine } from "./guardrails/policy-engine.js";
 import { AuditLogger } from "./audit-logger.js";
 import { SolanaConnection } from "./connection.js";
 import { TransactionBuilder } from "./protocols/transaction-builder.js";
