@@ -1,7 +1,7 @@
 /**
  * components/spinner.tsx
  *
- * Thin wrapper around ink-spinner with a message label.
+ * Animated loading indicator with a label.
  */
 
 import { Text } from "ink";
@@ -15,10 +15,9 @@ export function Spinner({ label = "Loading…" }: SpinnerProps) {
   return (
     <Text>
       <Text color="cyan">
-        <InkSpinner type="dots" />
+        <InkSpinner type="arc" />
       </Text>
-      {"  "}
-      <Text dimColor>{label}</Text>
+      <Text dimColor> {label}</Text>
     </Text>
   );
 }

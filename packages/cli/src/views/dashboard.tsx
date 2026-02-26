@@ -25,34 +25,70 @@ export function DashboardView({ services, refreshKey }: DashboardViewProps) {
     refreshKey,
   });
 
+  const totalSol = wallets.reduce((s, w) => s + w.balanceSol, 0);
+  const successCount = logs.filter((l) => l.success).length;
+
   return (
     <Box flexDirection="column">
-      {/* ── System ─────────────────────────────── */}
-      <Section title="System">
-        <Box>
-          <Text dimColor>Cluster </Text>
-          <Text bold>{services.config.cluster.toUpperCase()}</Text>
-          <Text>{"   "}</Text>
-          <Text dimColor>Wallets </Text>
-          <Text bold>{wLoading ? "…" : String(wallets.length)}</Text>
+      {/* ── Stat cards ─────────────────────────── */}
+      <Box marginBottom={1} marginLeft={2}>
+        <Box
+          borderStyle="round"
+          borderColor="cyan"
+          paddingX={2}
+          marginRight={3}
+          flexDirection="column"
+        >
+          <Text dimColor>WALLETS</Text>
+          <Text bold color="white">
+            {wLoading ? "…" : String(wallets.length)}
+          </Text>
         </Box>
-      </Section>
+        <Box
+          borderStyle="round"
+          borderColor="green"
+          paddingX={2}
+          marginRight={3}
+          flexDirection="column"
+        >
+          <Text dimColor>TOTAL SOL</Text>
+          <Text bold color="green">
+            {wLoading ? "…" : totalSol.toFixed(4)}
+          </Text>
+        </Box>
+        <Box
+          borderStyle="round"
+          borderColor="cyan"
+          paddingX={2}
+          flexDirection="column"
+        >
+          <Text dimColor>CLUSTER</Text>
+          <Text bold color="cyan">
+            {services.config.cluster.toUpperCase()}
+          </Text>
+        </Box>
+      </Box>
 
-      {/* ── Wallets ────────────────────────────── */}
+      {/* ── Wallet list ────────────────────────── */}
       <Section title="Wallets">
         {wLoading ? (
           <Spinner label="Loading wallets…" />
         ) : wallets.length === 0 ? (
-          <Text dimColor>
-            No wallets yet — create one via the MCP server or directly.
-          </Text>
+          <Text dimColor>No wallets yet — create one via the MCP server.</Text>
         ) : (
           wallets.map((w) => <WalletRow key={w.id} wallet={w} />)
         )}
       </Section>
 
-      {/* ── Activity ───────────────────────────── */}
-      <Section title="Recent Activity">
+      {/* ── Recent activity ────────────────────── */}
+      <Section
+        title={
+          "Recent Activity" +
+          (logs.length > 0
+            ? "  " + successCount + "/" + logs.length + " ok"
+            : "")
+        }
+      >
         {lLoading ? (
           <Spinner label="Loading logs…" />
         ) : logs.length === 0 ? (

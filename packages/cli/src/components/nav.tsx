@@ -1,7 +1,8 @@
 /**
  * components/nav.tsx
  *
- * Horizontal tab bar — press 1 / 2 / 3 to switch views.
+ * Horizontal tab bar. Active tab renders as an inverted-colour pill;
+ * inactive tabs show their numeric shortcut in dimmer text.
  */
 
 import { Box, Text } from "ink";
@@ -20,23 +21,21 @@ interface NavProps {
 
 export function Nav({ active }: NavProps) {
   return (
-    <Box marginTop={1}>
+    <Box marginTop={1} marginBottom={1}>
       {tabs.map((tab) => {
         const isActive = active === tab.view;
         return (
-          <Box key={tab.view} marginRight={3}>
-            <Text bold={isActive} color={isActive ? "cyan" : "gray"}>
-              {"["}
-              {tab.key}
-              {"] "}
-              {tab.label}
-            </Text>
+          <Box key={tab.view} marginRight={2}>
+            {isActive ? (
+              <Text backgroundColor="cyan" color="black" bold>
+                {" " + tab.key + "  " + tab.label.toUpperCase() + " "}
+              </Text>
+            ) : (
+              <Text color="gray">{"[" + tab.key + "] " + tab.label}</Text>
+            )}
           </Box>
         );
       })}
-
-      <Box flexGrow={1} />
-      <Text dimColor>{"[r] Refresh   [q] Quit"}</Text>
     </Box>
   );
 }

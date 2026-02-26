@@ -20,6 +20,13 @@ export interface AgentWalletConfig {
   passphrase: string;
   /** Logging level */
   logLevel: "debug" | "info" | "warn" | "error";
+  /**
+   * Owner / operator wallet address (base58 public key).
+   * When set, closing a wallet automatically sweeps any remaining SOL
+   * balance to this address before deleting the keystore.
+   * Set via OWNER_ADDRESS env var.
+   */
+  ownerAddress?: string;
 }
 
 function getPassphrase(): string {
@@ -49,5 +56,6 @@ export function getDefaultConfig(): AgentWalletConfig {
     passphrase: getPassphrase(),
     logLevel:
       (process.env.LOG_LEVEL as AgentWalletConfig["logLevel"]) || "info",
+    ownerAddress: process.env.OWNER_ADDRESS || undefined,
   };
 }

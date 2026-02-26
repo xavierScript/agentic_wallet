@@ -2,6 +2,7 @@ import {
   Keypair,
   PublicKey,
   Transaction,
+  SystemProgram,
   VersionedTransaction,
   LAMPORTS_PER_SOL,
   type TransactionSignature,
@@ -339,6 +340,104 @@ export class WalletService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Close a wallet — optionally sweeps the remaining SOL balance to
+   * `sweepToAddress`, then removes the policy and permanently deletes
+   * the encrypted keystore from disk.
+   *
+   * The sweep bypasses the policy engine (this is an explicit close
+   * action, not an agent-initiated transaction).
+   *
+   * @returns The number of lamports swept (0 if nothing to sweep).
+   */
+  async closeWallet(
+    walletId: string,
+    sweepToAddress?: string,
+  ): Promise<{ sweptLamports: number; sweepTxSignature?: string }> {
+    const entry = this.keyManager.loadKeystore(walletId); // throws if missing
+
+    let sweptLamports = 0;
+    let sweepTxSignature: string | undefined;
+
+    // ── Sweep remaining SOL ──────────────────────────────────────────
+    if (sweepToAddress) {
+      const balance = await this.connection.getBalance(entry.publicKey);
+
+      if (balance > 0) {
+        const toPk = new PublicKey(sweepToAddress);
+        const keypair = this.keyManager.unlockWallet(walletId);
+        const conn = this.connection.getConnection();
+        const { blockhash, lastValidBlockHeight } =
+          await this.connection.getLatestBlockhash();
+
+        // Measure the exact fee for this tx so the source account drains to 0.
+        // A leftover below the rent-exempt minimum (~890 880 lamports) causes
+        // "insufficient funds for rent" — leaving exactly 0 is always valid.
+        const feeMessage = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: keypair.publicKey,
+        })
+          .add(
+            SystemProgram.transfer({
+              fromPubkey: keypair.publicKey,
+              toPubkey: toPk,
+              lamports: 1, // placeholder; fee depends on instruction count, not amount
+            }),
+          )
+          .compileMessage();
+
+        const feeResult = await conn.getFeeForMessage(feeMessage, "confirmed");
+        const exactFee = feeResult.value ?? 5_000; // 5 000 is the default base fee
+        const sweepAmount = balance - exactFee;
+
+        if (sweepAmount > 0) {
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: keypair.publicKey,
+              toPubkey: toPk,
+              lamports: sweepAmount,
+            }),
+          );
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = keypair.publicKey;
+          tx.sign(keypair);
+
+          sweepTxSignature = await conn.sendRawTransaction(tx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+          });
+          await conn.confirmTransaction(
+            { signature: sweepTxSignature, blockhash, lastValidBlockHeight },
+            "confirmed",
+          );
+
+          sweptLamports = sweepAmount;
+          this.auditLogger.log({
+            action: "wallet:sweep",
+            walletId,
+            publicKey: entry.publicKey,
+            txSignature: sweepTxSignature,
+            success: true,
+            details: { to: sweepToAddress, lamports: sweepAmount },
+          });
+        }
+      } // if (balance > 0)
+    } // if (sweepToAddress)
+
+    // ── Remove policy and keystore ───────────────────────────────────
+    this.policyEngine.removePolicy(walletId);
+    this.keyManager.deleteWallet(walletId);
+    this.auditLogger.log({
+      action: "wallet:closed",
+      walletId,
+      publicKey: entry.publicKey,
+      success: true,
+      details: { label: entry.label, sweptLamports },
+    });
+
+    return { sweptLamports, sweepTxSignature };
   }
 
   /**

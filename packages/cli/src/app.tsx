@@ -33,10 +33,10 @@ export function App({ services }: AppProps) {
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Header />
+      <Header cluster={services.config.cluster} />
       <Nav active={view} />
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         {view === "dashboard" && (
           <DashboardView services={services} refreshKey={refreshKey} />
         )}
@@ -48,7 +48,7 @@ export function App({ services }: AppProps) {
         )}
       </Box>
 
-      <Footer services={services} />
+      <Footer services={services} view={view} />
     </Box>
   );
 }

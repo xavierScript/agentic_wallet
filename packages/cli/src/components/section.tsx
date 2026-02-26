@@ -1,7 +1,7 @@
 /**
  * components/section.tsx
  *
- * Reusable section wrapper with a coloured title divider.
+ * Reusable section block with a full-width title rule.
  */
 
 import { Box, Text } from "ink";
@@ -15,12 +15,15 @@ interface SectionProps {
 export function Section({ title, children }: SectionProps) {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text bold color="cyan">
-        {"─── "}
-        {title}
-        {" ───"}
-      </Text>
-      <Box flexDirection="column" marginLeft={2} marginTop={0}>
+      <Box>
+        <Text bold color="white">
+          {"  " + title.toUpperCase() + " "}
+        </Text>
+        <Text color="cyan" dimColor>
+          {"─────────────────────────────────────────────"}
+        </Text>
+      </Box>
+      <Box flexDirection="column" marginLeft={2} marginTop={1}>
         {children}
       </Box>
     </Box>
