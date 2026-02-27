@@ -11,6 +11,8 @@ export {
   PolicyEngine,
   type Policy,
   type PolicyRule,
+  HUMAN_ONLY,
+  type HumanOnlyOpts,
 } from "./guardrails/index.js";
 export { AuditLogger, type AuditLogEntry } from "./audit-logger.js";
 export {

@@ -7,3 +7,4 @@
  */
 
 export { PolicyEngine, type Policy, type PolicyRule } from "./policy-engine.js";
+export { HUMAN_ONLY, type HumanOnlyOpts } from "./human-only.js";

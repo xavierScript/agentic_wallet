@@ -9,6 +9,7 @@ import {
 } from "@solana/web3.js";
 import { KeyManager, type KeystoreEntry } from "./key-manager.js";
 import { PolicyEngine, type Policy } from "./guardrails/policy-engine.js";
+import { type HumanOnlyOpts } from "./guardrails/human-only.js";
 import { AuditLogger } from "./audit-logger.js";
 import { SolanaConnection } from "./connection.js";
 
@@ -351,11 +352,24 @@ export class WalletService {
    * action, not an agent-initiated transaction).
    *
    * @returns The number of lamports swept (0 if nothing to sweep).
+   *
+   * ──────────────────────────────────────────────────────────────────
+   * HUMAN-ONLY GUARD
+   * ──────────────────────────────────────────────────────────────────
+   * The `opts.humanInitiated: true` literal type is intentional.
+   * It cannot be satisfied by an MCP tool input schema (which can only express
+   * `boolean`, not the literal `true`), making it a compile-time barrier
+   * against any agent-facing code path accidentally calling this method.
+   *
+   * DO NOT change `true` to `boolean`. Keep wallet closure as a
+   * human-initiated CLI operation only.
    */
   async closeWallet(
     walletId: string,
-    sweepToAddress?: string,
+    sweepToAddress: string | undefined,
+    opts: HumanOnlyOpts,
   ): Promise<{ sweptLamports: number; sweepTxSignature?: string }> {
+    void opts; // consumed for its type constraint only
     const entry = this.keyManager.loadKeystore(walletId); // throws if missing
 
     let sweptLamports = 0;

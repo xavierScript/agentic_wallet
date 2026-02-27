@@ -12,6 +12,7 @@ import { Section } from "../components/section.js";
 import { Spinner } from "../components/spinner.js";
 import { WalletRow } from "../components/wallet-row.js";
 import type { WalletServices } from "../services.js";
+import { HUMAN_ONLY } from "@agentic-wallet/core";
 
 interface WalletsViewProps {
   services: WalletServices;
@@ -55,7 +56,7 @@ export function WalletsView({ services, refreshKey }: WalletsViewProps) {
         setConfirm(null);
         setClosing(true);
         services.walletService
-          .closeWallet(id, ownerAddress)
+          .closeWallet(id, ownerAddress, HUMAN_ONLY)
           .then(({ sweptLamports }) => {
             const swept =
               sweptLamports > 0
