@@ -80,10 +80,14 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "agentic-wallet": {
       "command": "node",
-      "args": ["C:/path/to/agentic-wallet/packages/mcp-server/dist/index.js"],
+      "args": [
+        "C:\\Users\\HP\\web3-projects\\agentic-wallet\\packages\\mcp-server\\dist\\index.js"
+      ],
       "env": {
-        "WALLET_PASSPHRASE": "your-passphrase",
-        "SOLANA_CLUSTER": "devnet"
+        "WALLET_PASSPHRASE": "your-strong-passphrase",
+        "SOLANA_CLUSTER": "devnet",
+        "SOLANA_RPC_URL": "https://api.devnet.solana.com",
+        "OWNER_ADDRESS": "55czFRi1njMSE7eJyDLx1R5yS1Bi5GiL2Ek4F1cZPLFx"
       }
     }
   }

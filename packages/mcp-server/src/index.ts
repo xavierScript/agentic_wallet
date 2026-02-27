@@ -16,6 +16,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServices } from "./services.js";
 import { registerAllTools } from "./tools/index.js";
+import { registerAllResources } from "./resources/index.js";
+import { registerAllPrompts } from "./prompts/index.js";
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -29,6 +31,12 @@ const server = new McpServer({
 
 // Register all tools from the modular tools/ directory
 registerAllTools(server, services);
+
+// Register all resources (read-only data for agent context)
+registerAllResources(server, services);
+
+// Register all prompts (guided agent workflows)
+registerAllPrompts(server, services);
 
 // ---------------------------------------------------------------------------
 // Start the server
