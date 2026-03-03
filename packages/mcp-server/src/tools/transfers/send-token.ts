@@ -74,32 +74,47 @@ export function registerSendTokenTool(
         decimals,
       );
 
-      const signature = await walletService.signAndSendTransaction(
-        wallet_id,
-        tx,
-        { action: "spl-token:transfer", details: { to, mint, amount } },
-      );
+      try {
+        const result = await walletService.signAndSendTransaction(
+          wallet_id,
+          tx,
+          { action: "spl-token:transfer", details: { to, mint, amount } },
+        );
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                success: true,
-                signature,
-                from: entry.publicKey,
-                to,
-                mint,
-                amount,
-                decimals,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  signature: result.signature,
+                  from: entry.publicKey,
+                  to,
+                  mint,
+                  amount,
+                  decimals,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: result.explorerUrl,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error sending token: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 }

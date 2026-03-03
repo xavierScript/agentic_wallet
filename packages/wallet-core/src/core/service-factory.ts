@@ -13,6 +13,7 @@ import { SolanaConnection } from "./connection.js";
 import { TransactionBuilder } from "../protocols/transaction-builder.js";
 import { SplTokenService } from "../protocols/spl-token.js";
 import { MasterFunder } from "./master-funder.js";
+import { KoraService } from "../protocols/kora-service.js";
 import { getDefaultConfig, type AgentWalletConfig } from "./config.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -31,6 +32,8 @@ export interface CoreServices {
   splTokenService: SplTokenService;
   /** null when MASTER_WALLET_SECRET_KEY is not set */
   masterFunder: MasterFunder | null;
+  /** null when KORA_RPC_URL is not set */
+  koraService: KoraService | null;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────────
@@ -57,12 +60,16 @@ export function createCoreServices(): CoreServices {
     auditLogger,
   );
 
+  // Kora gasless relay — returns null when KORA_RPC_URL is not set
+  const koraService = KoraService.create(config.koraRpcUrl, config.koraApiKey);
+
   const walletService = new WalletService(
     keyManager,
     policyEngine,
     auditLogger,
     connection,
     masterFunder,
+    koraService,
   );
 
   const txBuilder = new TransactionBuilder(connection);
@@ -78,5 +85,6 @@ export function createCoreServices(): CoreServices {
     txBuilder,
     splTokenService,
     masterFunder,
+    koraService,
   };
 }

@@ -6,7 +6,11 @@
  */
 
 export { KeyManager, type KeystoreEntry } from "./core/key-manager.js";
-export { WalletService, type WalletInfo } from "./core/wallet-service.js";
+export {
+  WalletService,
+  type WalletInfo,
+  type TransactionResult,
+} from "./core/wallet-service.js";
 export {
   PolicyEngine,
   type Policy,
@@ -40,3 +44,11 @@ export {
   type CoreServices,
 } from "./core/service-factory.js";
 export { MasterFunder, type MasterFunderConfig } from "./core/master-funder.js";
+export {
+  KoraService,
+  type KoraServiceConfig,
+  type KoraPayerInfo,
+  type KoraNodeConfig,
+  type KoraSignAndSendResult,
+  type KoraSignResult,
+} from "./protocols/kora-service.js";

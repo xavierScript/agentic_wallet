@@ -57,30 +57,45 @@ export function registerSendSolTool(
       const fromPk = new PublicKey(entry.publicKey);
       const tx = txBuilder.buildSolTransfer(fromPk, toPk, amount);
 
-      const signature = await walletService.signAndSendTransaction(
-        wallet_id,
-        tx,
-        { action: "sol:transfer", details: { to, amount } },
-      );
+      try {
+        const result = await walletService.signAndSendTransaction(
+          wallet_id,
+          tx,
+          { action: "sol:transfer", details: { to, amount } },
+        );
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                success: true,
-                signature,
-                from: entry.publicKey,
-                to,
-                amountSol: amount,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  signature: result.signature,
+                  from: entry.publicKey,
+                  to,
+                  amountSol: amount,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: result.explorerUrl,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error sending SOL: ${err.message}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 }

@@ -12,6 +12,7 @@ The Agentic Wallet is an MCP server that gives AI agents the ability to:
 
 - Create and manage custodial Solana wallets with AES-256-GCM encrypted key storage
 - Execute on-chain actions: SOL transfers, SPL token transfers, token swaps via Jupiter, on-chain memos
+- **Gasless transactions via Kora** — agent wallets never need SOL for gas; a Kora paymaster node sponsors all network fees
 - Create and mint custom SPL tokens
 - Pay for HTTP resources protected by the [x402 payment protocol](https://x402.org)
 - Enforce per-wallet spending policies and rate limits — agents are blocked, not just warned, when limits are exceeded
@@ -26,8 +27,9 @@ Everything is exposed as standard MCP tools, resources, and prompts — no custo
 
 1. Complete the setup in [`skills/references/setup.md`](skills/references/setup.md)
 2. Ensure `.env` contains `WALLET_PASSPHRASE`, `SOLANA_RPC_URL`, and `MASTER_WALLET_SECRET_KEY`
-3. Run `pnpm build` and connect the MCP server to an AI agent client
-4. The server targets **Solana devnet** by default — no real funds are at risk
+3. **For gasless demos (prompts 26–28):** start a local Kora node — see [`kora/README.md`](kora/README.md) for setup. Set `KORA_RPC_URL=http://localhost:8080` in `.env`
+4. Run `pnpm build` and connect the MCP server to an AI agent client
+5. The server targets **Solana devnet** by default — no real funds are at risk
 
 ---
 
@@ -37,6 +39,10 @@ Everything is exposed as standard MCP tools, resources, and prompts — no custo
 
 This sequence tells a complete story:
 _System online → agent wallet created and auto-funded → policy inspected → agent blocked by guardrail → audit trail reviewed → security audit run → operator report generated_
+
+**Gasless extension: 1 → 2 → 26 → 27 → 28 → 13**
+
+_System online → wallet created → gasless SOL transfer via Kora → gasless memo → audit trail confirms Kora fee payer_
 
 ---
 
@@ -357,6 +363,53 @@ table at the end showing each tick's price, signal, and action taken.
 
 ---
 
+## 26. Gasless SOL Transfer via Kora
+
+> **Demonstrates:** Kora paymaster integration — all five legacy transaction tools (`send_sol`, `send_token`, `write_memo`, `create_token_mint`, `mint_tokens`) are routed through Kora's `signAndSendTransaction` RPC so the agent wallet pays zero gas. The audit log records `gasless: true, feePayer: "kora"`. (Jupiter swaps use `VersionedTransaction` where Jupiter bakes the fee payer into the compiled message — Kora covers legacy transactions only.)
+
+```
+Send 0.005 SOL from wallet [WALLET_ID] to address [RECIPIENT_ADDRESS].
+This transfer should be gasless — the Kora paymaster node should pay the
+network fee, not the agent wallet. Confirm the transaction landed and
+report:
+- The transaction signature and Solana Explorer link
+- Whether the agent wallet's SOL balance decreased by exactly 0.005 SOL
+  (proving it did not pay gas)
+- The audit log entry showing gasless: true and feePayer: kora
+```
+
+---
+
+## 27. Gasless On-Chain Memo via Kora
+
+> **Demonstrates:** Any legacy transaction (not just SOL transfers) is gasless when Kora is configured — the memo instruction is signed by the agent, Kora co-signs as fee payer.
+
+```
+Write the following memo on-chain using wallet [WALLET_ID]:
+
+"Gasless memo — Kora paymaster sponsoring network fees"
+
+Confirm the transaction was gasless (agent paid no SOL for gas) and return
+the transaction signature.
+```
+
+---
+
+## 28. Verify Kora Gasless Audit Trail
+
+> **Demonstrates:** Audit log entries for gasless transactions include `gasless: true` and `feePayer: "kora"`, providing a clear forensic trail distinguishing Kora-sponsored transactions from self-paid ones.
+
+```
+Retrieve the most recent audit log entries for wallet [WALLET_ID].
+Identify all entries where gasless is true and feePayer is "kora".
+Summarise:
+- How many transactions were gasless vs self-paid
+- The total SOL moved in gasless transactions
+- Whether any gasless transactions were blocked by policy
+```
+
+---
+
 ## Quick Reference
 
 | #   | Capability            | MCP Tool / Resource                    | What It Proves                            |
@@ -386,3 +439,6 @@ table at the end showing each tick's price, signal, and action taken.
 | 23  | Fetch live prices     | `fetch_prices`                         | Jupiter Price API, token resolution       |
 | 24  | Evaluate strategy     | `evaluate_strategy`                    | Strategy signals, rebalance logic         |
 | 25  | Autonomous trading    | `autonomous-trading` prompt            | Multi-tick bot loop, agent-as-trader      |
+| 26  | Gasless SOL transfer  | `send_sol` + Kora                      | Kora pays gas, agent keeps all SOL        |
+| 27  | Gasless memo          | `write_memo` + Kora                    | Any legacy tx is gasless with Kora        |
+| 28  | Gasless audit trail   | `audit://wallet-logs`                  | Forensic gasless vs self-paid distinction |

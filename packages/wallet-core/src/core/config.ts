@@ -44,6 +44,19 @@ export interface AgentWalletConfig {
    * Set via AGENT_SEED_SOL env var.
    */
   agentSeedSol: number;
+
+  /**
+   * Kora gasless relay RPC URL (e.g. http://localhost:8080).
+   * When set, agent transactions are routed through Kora — the Kora
+   * node's signer pays SOL network fees so agent wallets never need SOL.
+   * Set via KORA_RPC_URL env var.
+   */
+  koraRpcUrl?: string;
+  /**
+   * API key for the Kora node (optional — depends on node's auth config).
+   * Set via KORA_API_KEY env var.
+   */
+  koraApiKey?: string;
 }
 
 function getPassphrase(): string {
@@ -76,5 +89,7 @@ export function getDefaultConfig(): AgentWalletConfig {
     ownerAddress: process.env.OWNER_ADDRESS || undefined,
     masterWalletSecretKey: process.env.MASTER_WALLET_SECRET_KEY || undefined,
     agentSeedSol: Number(process.env.AGENT_SEED_SOL) || 0.05,
+    koraRpcUrl: process.env.KORA_RPC_URL || undefined,
+    koraApiKey: process.env.KORA_API_KEY || undefined,
   };
 }

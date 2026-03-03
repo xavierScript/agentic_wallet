@@ -88,8 +88,8 @@ A **TUI (terminal UI)** lets human operators observe all wallet state and audit 
 ### 1. Install and build
 
 ```bash
-git clone https://github.com/your-username/agentic-wallet.git
-cd agentic-wallet
+git clone https://github.com/xavierScript/agentic_wallet.git
+cd agentic_wallet
 
 pnpm install
 pnpm build          # builds core → cli → mcp-server in dependency order
@@ -120,6 +120,15 @@ SOLANA_CLUSTER=devnet
 
 # Optional — agent-created wallets sweep remaining SOL here on close
 OWNER_ADDRESS=<your-solana-address>
+
+# Optional — Kora gasless paymaster relay (see kora/README.md)
+# When set, agent wallets never pay SOL network fees — the Kora node covers them
+# Without this the system works normally: agent wallet pays its own fees
+KORA_RPC_URL=http://localhost:8080
+
+# Optional — auto-fund newly created agent wallets from a master wallet
+MASTER_WALLET_SECRET_KEY=<base58-secret-key>
+AGENT_SEED_SOL=0.05
 ```
 
 ### 3. Launch the TUI (human operator view)
@@ -194,6 +203,10 @@ Once connected, ask your agent:
 > "Read the wallet system status and tell me how many wallets exist."
 
 The agent will call the `wallet://system/status` resource and respond with live data.
+
+### Demo Prompts
+
+For 28 copy-paste prompts covering every capability — from wallet creation and gasless transfers through autonomous multi-tick trading — see **[DEMO-PROMPTS.md](DEMO-PROMPTS.md)**.
 
 ---
 
@@ -297,7 +310,9 @@ agentic-wallet/
 │   │       └── protocols/
 │   │           ├── transaction-builder.ts  # SOL + SPL transfer construction
 │   │           ├── spl-token.ts            # Mint + ATA management
-│   │           └── jupiter-service.ts      # Jupiter v6 DEX aggregator
+│   │           ├── jupiter-service.ts      # Jupiter v6 DEX aggregator
+│   │           ├── kora-service.ts         # Kora gasless paymaster relay
+│   │           └── x402-client.ts          # x402 HTTP micropayment protocol
 │   │
 │   ├── mcp-server/                # MCP server — agent interface
 │   │   └── src/
@@ -318,7 +333,13 @@ agentic-wallet/
 │   ├── SKILL.md                        # Structured agent instructions
 │   └── references/                     # security, setup, transactions, wallets
 │
+├── kora/                          # Kora paymaster node config (optional)
+│   ├── kora.toml                       # Kora node configuration
+│   ├── signers.toml                    # Kora signer keypair config
+│   └── README.md                       # Kora setup guide & troubleshooting
+│
 ├── DEEP-DIVE.md                   # Architecture + security deep dive
+├── DEMO-PROMPTS.md                # 28 copy-paste demo prompts
 ├── SKILLS.md                      # Top-level agent skills index
 ├── Makefile                       # Build, dev, test, run shortcuts
 └── README.md                      # This file
@@ -388,19 +409,24 @@ See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
 | Program allowlist | Optionally restrict which on-chain programs a wallet may call                                                 |
 | Audit trail       | Append-only JSONL, every operation logged regardless of success/failure                                       |
 | Human-only ops    | `closeWallet` requires `HumanOnlyOpts` — a compile-time type guard that prevents any MCP tool from calling it |
+| Gasless relay     | Kora optional — if node is down, `WalletService` falls back to standard path automatically                    |
 | MCP agents        | No tool exposes raw keypairs or passphrase; agents operate through policy-checked `WalletService` only        |
 
 ---
 
 ## Environment Variables
 
-| Variable            | Default                         | Description                                |
-| ------------------- | ------------------------------- | ------------------------------------------ |
-| `WALLET_PASSPHRASE` | _(required)_                    | Encrypts all keystores on disk             |
-| `SOLANA_RPC_URL`    | `https://api.devnet.solana.com` | RPC endpoint                               |
-| `SOLANA_CLUSTER`    | `devnet`                        | `devnet` / `testnet` / `mainnet-beta`      |
-| `OWNER_ADDRESS`     | _(optional)_                    | Receives swept SOL when a wallet is closed |
-| `LOG_LEVEL`         | `info`                          | `debug` / `info` / `warn` / `error`        |
+| Variable                   | Default                         | Description                                                             |
+| -------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
+| `WALLET_PASSPHRASE`        | _(required)_                    | Encrypts all keystores on disk                                          |
+| `SOLANA_RPC_URL`           | `https://api.devnet.solana.com` | RPC endpoint                                                            |
+| `SOLANA_CLUSTER`           | `devnet`                        | `devnet` / `testnet` / `mainnet-beta`                                   |
+| `OWNER_ADDRESS`            | _(optional)_                    | Receives swept SOL when a wallet is closed                              |
+| `LOG_LEVEL`                | `info`                          | `debug` / `info` / `warn` / `error`                                     |
+| `KORA_RPC_URL`             | _(optional)_                    | Kora paymaster URL — enables gasless txs; omit to use standard fee path |
+| `KORA_API_KEY`             | _(optional)_                    | API key for authenticated Kora nodes                                    |
+| `MASTER_WALLET_SECRET_KEY` | _(optional)_                    | Base58 secret key — auto-funds new agent wallets on creation            |
+| `AGENT_SEED_SOL`           | `0.05`                          | SOL seeded to each new agent wallet from master wallet                  |
 
 ---
 

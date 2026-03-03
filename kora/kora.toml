@@ -1,0 +1,104 @@
+# Kora Paymaster Configuration for Agentic Wallet
+# This config makes Kora fully sponsor gas fees (free pricing).
+# Agent wallets never need SOL — Kora's signer pays all network fees.
+
+[kora]
+rate_limit = 100
+# payment_address = ""  # defaults to signer address
+
+# Optional: uncomment and set a real key to secure your node
+# [kora.auth]
+# api_key = "your-api-key-here"
+
+# Enable the methods our codebase actually uses
+[kora.enabled_methods]
+liveness = true
+estimate_transaction_fee = true
+get_supported_tokens = true
+sign_transaction = true
+sign_and_send_transaction = true   # ← primary method used by WalletService
+transfer_transaction = false
+get_blockhash = true
+get_config = true
+get_payer_signer = true            # ← used to get signer address
+
+[validation]
+# Use "Mock" for devnet (no Jupiter API key needed). Use "Jupiter" for mainnet.
+price_source = "Mock"
+
+# Max lamports per transaction the Kora node will pay
+max_allowed_lamports = 10000000    # 0.01 SOL — generous for devnet
+max_signatures = 10
+
+# Block durable nonce transactions
+allow_durable_transactions = false
+
+# Programs our agent wallets interact with
+allowed_programs = [
+    "11111111111111111111111111111111",              # System Program (SOL transfers)
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",   # SPL Token Program
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",  # Associated Token Program
+    "AddressLookupTab1e1111111111111111111111111",   # Address Lookup Table
+    "ComputeBudget111111111111111111111111111111",   # Compute Budget
+    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",  # Memo Program
+]
+
+# Tokens the node allows in transactions (add your devnet tokens here)
+allowed_tokens = [
+    "So11111111111111111111111111111111111111112",    # Wrapped SOL
+    # Add devnet USDC or other token mints you work with
+]
+
+# SPL tokens accepted as fee payment — empty for "free" pricing
+allowed_spl_paid_tokens = "All"
+
+# Accounts to block (empty for now)
+disallowed_accounts = []
+
+# ── FREE PRICING ──────────────────────────────────────────────────────────
+# Kora node operator fully sponsors all gas fees — agents pay nothing.
+[validation.price]
+type = "free"
+
+# ── FEE PAYER PROTECTION ─────────────────────────────────────────────────
+# Lock down the Kora signer so user transactions can't drain it.
+# All set to false = Kora signer can ONLY pay network fees, nothing else.
+[validation.fee_payer_policy.system]
+allow_transfer = false
+allow_assign = false
+allow_create_account = false
+allow_allocate = false
+
+[validation.fee_payer_policy.system.nonce]
+allow_initialize = false
+allow_advance = false
+allow_authorize = false
+allow_withdraw = false
+
+[validation.fee_payer_policy.spl_token]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = false
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false
+
+[validation.fee_payer_policy.token_2022]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = false
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false

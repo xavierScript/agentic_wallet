@@ -13,6 +13,7 @@ import { type HumanOnlyOpts } from "../guardrails/human-only.js";
 import { AuditLogger } from "./audit-logger.js";
 import { SolanaConnection } from "./connection.js";
 import { MasterFunder } from "./master-funder.js";
+import { KoraService } from "../protocols/kora-service.js";
 
 export interface WalletInfo {
   id: string;
@@ -33,6 +34,22 @@ export interface TokenBalance {
 }
 
 /**
+ * Result returned by signAndSendTransaction / signAndSendVersionedTransaction.
+ * Enriches the raw signature string with metadata that tools can surface
+ * directly to AI agents (explorer URL, gasless flag, network, etc.).
+ */
+export interface TransactionResult {
+  /** Base-58 transaction signature */
+  signature: string;
+  /** Whether Kora paid the network fee (true) or the agent wallet did (false) */
+  gasless: boolean;
+  /** The Solana cluster this tx landed on */
+  network: string;
+  /** Solana Explorer link for the transaction */
+  explorerUrl: string;
+}
+
+/**
  * WalletService is the primary interface for wallet operations.
  * Agent logic calls this service — raw private keys are never exposed.
  *
@@ -49,6 +66,7 @@ export class WalletService {
   private auditLogger: AuditLogger;
   private connection: SolanaConnection;
   private masterFunder: MasterFunder | null;
+  private koraService: KoraService | null;
 
   constructor(
     keyManager: KeyManager,
@@ -56,12 +74,14 @@ export class WalletService {
     auditLogger: AuditLogger,
     connection: SolanaConnection,
     masterFunder?: MasterFunder | null,
+    koraService?: KoraService | null,
   ) {
     this.keyManager = keyManager;
     this.policyEngine = policyEngine;
     this.auditLogger = auditLogger;
     this.connection = connection;
     this.masterFunder = masterFunder ?? null;
+    this.koraService = koraService ?? null;
   }
 
   /**
@@ -235,7 +255,7 @@ export class WalletService {
       action: "transaction",
     },
     additionalSigners: Keypair[] = [],
-  ): Promise<TransactionSignature> {
+  ): Promise<TransactionResult> {
     // Policy check
     const violation = this.policyEngine.checkTransaction(
       walletId,
@@ -257,23 +277,68 @@ export class WalletService {
     const keypair = this.keyManager.unlockWallet(walletId);
 
     try {
-      const conn = this.connection.getConnection();
       const { blockhash, lastValidBlockHeight } =
         await this.connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
-      transaction.feePayer = keypair.publicKey;
 
-      // Sign (wallet keypair + any additional signers)
+      // ── Kora gasless path ──────────────────────────────────────────
+      // When a KoraService is configured, attempt to relay through Kora so
+      // the Kora node's signer pays SOL network fees. If the Kora node is
+      // unreachable or returns an error we log a warning and fall through to
+      // the standard path so the agent remains operational.
+      if (this.koraService) {
+        try {
+          const { signerAddress } = await this.koraService.getPayerSigner();
+          transaction.feePayer = new PublicKey(signerAddress);
+          transaction.partialSign(keypair, ...additionalSigners);
+
+          // Serialize without requiring all signatures — Kora adds its own
+          const rawTx = transaction.serialize({
+            requireAllSignatures: false,
+            verifySignatures: false,
+          });
+          const base64Tx = rawTx.toString("base64");
+
+          const { signature } =
+            await this.koraService.signAndSendTransaction(base64Tx);
+
+          this.auditLogger.log({
+            action: context.action,
+            walletId,
+            publicKey: keypair.publicKey.toBase58(),
+            txSignature: signature,
+            success: true,
+            details: { ...context.details, gasless: true, feePayer: "kora" },
+          });
+
+          this.policyEngine.recordTransaction(walletId);
+          return this.buildResult(signature, true);
+        } catch (koraError: any) {
+          // Kora is unavailable — log a warning and fall through so the
+          // standard path (agent-pays-fees) handles the transaction.
+          this.auditLogger.log({
+            action: context.action,
+            walletId,
+            publicKey: keypair.publicKey.toBase58(),
+            success: false,
+            error: `Kora unavailable, falling back to standard path: ${koraError.message}`,
+            details: { ...context.details, koraFallback: true },
+          });
+        }
+      }
+
+      // ── Standard path (agent pays fees) ────────────────────────────
+      // Also reached when Kora is configured but unavailable (see above).
+      transaction.feePayer = keypair.publicKey;
       transaction.sign(keypair, ...additionalSigners);
 
-      // Send
+      const conn = this.connection.getConnection();
       const rawTx = transaction.serialize();
       const signature = await conn.sendRawTransaction(rawTx, {
         skipPreflight: false,
         preflightCommitment: "confirmed",
       });
 
-      // Confirm
       await conn.confirmTransaction(
         { signature, blockhash, lastValidBlockHeight },
         "confirmed",
@@ -291,7 +356,7 @@ export class WalletService {
       // Record for rate limiting
       this.policyEngine.recordTransaction(walletId);
 
-      return signature;
+      return this.buildResult(signature, false);
     } catch (error: any) {
       this.auditLogger.log({
         action: context.action,
@@ -322,7 +387,7 @@ export class WalletService {
       action: "versioned-transaction",
     },
     estimatedLamports: number = 0,
-  ): Promise<TransactionSignature> {
+  ): Promise<TransactionResult> {
     // Policy check — rate limits, cooldown, and spend cap (no program checks)
     const violation = this.policyEngine.checkLimits(
       walletId,
@@ -342,7 +407,6 @@ export class WalletService {
     const keypair = this.keyManager.unlockWallet(walletId);
 
     try {
-      // Sign
       transaction.sign([keypair]);
 
       const conn = this.connection.getConnection();
@@ -370,7 +434,7 @@ export class WalletService {
 
       this.policyEngine.recordTransaction(walletId, estimatedLamports);
 
-      return signature;
+      return this.buildResult(signature, false);
     } catch (error: any) {
       this.auditLogger.log({
         action: context.action,
@@ -426,9 +490,7 @@ export class WalletService {
         const { blockhash, lastValidBlockHeight } =
           await this.connection.getLatestBlockhash();
 
-        // Measure the exact fee for this tx so the source account drains to 0.
-        // A leftover below the rent-exempt minimum (~890 880 lamports) causes
-        // "insufficient funds for rent" — leaving exactly 0 is always valid.
+        // Measure the exact fee so the source account drains to 0.
         const feeMessage = new Transaction({
           recentBlockhash: blockhash,
           feePayer: keypair.publicKey,
@@ -437,13 +499,13 @@ export class WalletService {
             SystemProgram.transfer({
               fromPubkey: keypair.publicKey,
               toPubkey: toPk,
-              lamports: 1, // placeholder; fee depends on instruction count, not amount
+              lamports: 1,
             }),
           )
           .compileMessage();
 
         const feeResult = await conn.getFeeForMessage(feeMessage, "confirmed");
-        const exactFee = feeResult.value ?? 5_000; // 5 000 is the default base fee
+        const exactFee = feeResult.value ?? 5_000;
         const sweepAmount = balance - exactFee;
 
         if (sweepAmount > 0) {
@@ -468,13 +530,19 @@ export class WalletService {
           );
 
           sweptLamports = sweepAmount;
+        }
+
+        if (sweptLamports > 0) {
           this.auditLogger.log({
             action: "wallet:sweep",
             walletId,
             publicKey: entry.publicKey,
             txSignature: sweepTxSignature,
             success: true,
-            details: { to: sweepToAddress, lamports: sweepAmount },
+            details: {
+              to: sweepToAddress,
+              lamports: sweptLamports,
+            },
           });
         }
       } // if (balance > 0)
@@ -500,5 +568,22 @@ export class WalletService {
   getPublicKey(walletId: string): string {
     const entry = this.keyManager.loadKeystore(walletId);
     return entry.publicKey;
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Build a TransactionResult with explorer URL and network metadata.
+   */
+  private buildResult(signature: string, gasless: boolean): TransactionResult {
+    const cluster = this.connection.getCluster();
+    const clusterParam =
+      cluster === "mainnet-beta" ? "" : `?cluster=${cluster}`;
+    return {
+      signature,
+      gasless,
+      network: cluster,
+      explorerUrl: `https://explorer.solana.com/tx/${signature}${clusterParam}`,
+    };
   }
 }

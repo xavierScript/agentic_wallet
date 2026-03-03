@@ -25,3 +25,11 @@ export {
   type X402PaymentResult,
   type X402ClientConfig,
 } from "./x402-client.js";
+export {
+  KoraService,
+  type KoraServiceConfig,
+  type KoraPayerInfo,
+  type KoraNodeConfig,
+  type KoraSignAndSendResult,
+  type KoraSignResult,
+} from "./kora-service.js";

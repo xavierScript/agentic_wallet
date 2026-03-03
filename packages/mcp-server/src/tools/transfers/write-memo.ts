@@ -92,7 +92,7 @@ export function registerWriteMemoTool(
       }
 
       try {
-        const signature = await walletService.signAndSendTransaction(
+        const result = await walletService.signAndSendTransaction(
           wallet_id,
           tx,
           {
@@ -111,7 +111,7 @@ export function registerWriteMemoTool(
               text: JSON.stringify(
                 {
                   success: true,
-                  signature,
+                  signature: result.signature,
                   memo: message,
                   wallet: entry.publicKey,
                   ...(transfer_to && {
@@ -120,7 +120,9 @@ export function registerWriteMemoTool(
                       amountSol: transfer_amount,
                     },
                   }),
-                  explorer: `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: result.explorerUrl,
                 },
                 null,
                 2,

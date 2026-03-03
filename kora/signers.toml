@@ -1,0 +1,23 @@
+# Kora Signers Configuration for Agentic Wallet
+#
+# This defines the keypair(s) the Kora node uses to sign transactions
+# as the fee payer. The signer's SOL balance pays all network fees.
+#
+# Set the KORA_SIGNER_PRIVATE_KEY environment variable to a base58-encoded
+# Solana private key, OR a path to a JSON keypair file.
+#
+# Generate a new keypair:
+#   solana-keygen new --outfile kora/kora-signer.json --no-bip39-passphrase
+#
+# Then either:
+#   export KORA_SIGNER_PRIVATE_KEY=$(cat kora/kora-signer.json)
+# Or:
+#   export KORA_SIGNER_PRIVATE_KEY="kora/kora-signer.json"
+
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "primary"
+type = "memory"
+private_key_env = "KORA_SIGNER_PRIVATE_KEY"

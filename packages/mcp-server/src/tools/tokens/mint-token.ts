@@ -59,7 +59,7 @@ export function registerMintTokenTool(
         const { transaction, mintKeypair } =
           await splTokenService.buildCreateMint(payerPk, decimals);
 
-        const signature = await walletService.signAndSendTransaction(
+        const result = await walletService.signAndSendTransaction(
           wallet_id,
           transaction,
           {
@@ -72,6 +72,8 @@ export function registerMintTokenTool(
           [mintKeypair],
         );
 
+        const clusterParam =
+          result.network === "mainnet-beta" ? "" : `?cluster=${result.network}`;
         return {
           content: [
             {
@@ -82,9 +84,12 @@ export function registerMintTokenTool(
                   mintAddress: mintKeypair.publicKey.toBase58(),
                   mintAuthority: entry.publicKey,
                   decimals,
-                  signature,
+                  signature: result.signature,
                   note: "Use mint_tokens to mint supply to a wallet.",
-                  explorer: `https://explorer.solana.com/address/${mintKeypair.publicKey.toBase58()}?cluster=devnet`,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: `https://explorer.solana.com/address/${mintKeypair.publicKey.toBase58()}${clusterParam}`,
+                  txExplorer: result.explorerUrl,
                 },
                 null,
                 2,
@@ -182,7 +187,7 @@ export function registerMintTokenTool(
             amount,
           );
 
-        const signature = await walletService.signAndSendTransaction(
+        const result = await walletService.signAndSendTransaction(
           wallet_id,
           transaction,
           {
@@ -202,12 +207,14 @@ export function registerMintTokenTool(
               text: JSON.stringify(
                 {
                   success: true,
-                  signature,
+                  signature: result.signature,
                   mint,
                   recipient: recipientAddress,
                   amountMinted: amount,
                   tokenAccount,
-                  explorer: `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: result.explorerUrl,
                 },
                 null,
                 2,

@@ -165,7 +165,7 @@ export function registerSwapTokensTool(
       const estimatedLamports = inputMint === SOL_MINT ? Number(rawAmount) : 0;
 
       try {
-        const signature = await walletService.signAndSendVersionedTransaction(
+        const result = await walletService.signAndSendVersionedTransaction(
           wallet_id,
           swapTx,
           {
@@ -192,7 +192,7 @@ export function registerSwapTokensTool(
               text: JSON.stringify(
                 {
                   success: true,
-                  signature,
+                  signature: result.signature,
                   swap: {
                     from: `${amount} ${inputInfo.symbol}`,
                     to: `~${expectedOutput} ${outputInfo.symbol}`,
@@ -202,7 +202,9 @@ export function registerSwapTokensTool(
                     route: routeLabels.join(" → "),
                   },
                   wallet: entry.publicKey,
-                  explorer: `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
+                  gasless: result.gasless,
+                  network: result.network,
+                  explorer: result.explorerUrl,
                 },
                 null,
                 2,
