@@ -160,11 +160,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "agentic-wallet": {
       "command": "node",
-      "args": ["<absolute-path-to-repo>/packages/mcp-server/dist/index.js"],
-      "env": {
-        "WALLET_PASSPHRASE": "your-strong-passphrase-here",
-        "SOLANA_CLUSTER": "devnet"
-      }
+      "args": ["<absolute-path-to-repo>/packages/mcp-server/dist/index.js"]
     }
   }
 }
