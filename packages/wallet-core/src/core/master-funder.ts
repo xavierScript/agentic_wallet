@@ -71,6 +71,19 @@ export class MasterFunder {
    * Create a MasterFunder from config fields.
    * Returns `null` when the master key is not configured (backward-compatible).
    */
+  /**
+   * Create a MasterFunder directly from a Keypair (e.g. unlocked from KeyManager).
+   * Use this when the master key is stored in the encrypted keystore rather than in env.
+   */
+  static fromKeypair(
+    keypair: Keypair,
+    seedSol: number,
+    connection: SolanaConnection,
+    auditLogger: AuditLogger,
+  ): MasterFunder {
+    return new MasterFunder(keypair, seedSol, connection, auditLogger);
+  }
+
   static create(
     masterSecretKey: string | undefined,
     seedSol: number,

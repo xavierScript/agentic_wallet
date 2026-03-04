@@ -11,3 +11,6 @@ dist/
 coverage/
 *.tsbuildinfo
 out/
+
+# Kora signer keypair — contains a raw private key, never commit
+kora/kora-signer.json

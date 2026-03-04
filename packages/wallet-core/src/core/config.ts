@@ -33,10 +33,21 @@ export interface AgentWalletConfig {
    * from this wallet instead of relying on devnet faucets.
    * Set via MASTER_WALLET_SECRET_KEY env var.
    *
-   * ⚠️  For devnet/testnet only. On mainnet use a dedicated treasury
-   * wallet with its own spending limits rather than your primary wallet.
+   * ⚠️  Prefer `masterWalletKeyLabel` (encrypted keystore) over this.
+   *     For devnet/testnet only. On mainnet use a dedicated treasury
+   *     wallet with its own spending limits rather than your primary wallet.
+   * @deprecated Use masterWalletKeyLabel + `pnpm key:import` instead.
    */
   masterWalletSecretKey?: string;
+  /**
+   * Keystore label for the master (funding) wallet.
+   * When set the key is loaded from the AES-256-GCM encrypted keystore
+   * (imported once via `pnpm key:import`) — the raw secret key is never
+   * kept in env.
+   * Takes precedence over `masterWalletSecretKey` when both are present.
+   * Set via MASTER_WALLET_KEY_LABEL env var.
+   */
+  masterWalletKeyLabel?: string;
   /**
    * Amount of SOL to seed each newly created agent wallet with.
    * Only used when masterWalletSecretKey is configured.
@@ -88,6 +99,7 @@ export function getDefaultConfig(): AgentWalletConfig {
       (process.env.LOG_LEVEL as AgentWalletConfig["logLevel"]) || "info",
     ownerAddress: process.env.OWNER_ADDRESS || undefined,
     masterWalletSecretKey: process.env.MASTER_WALLET_SECRET_KEY || undefined,
+    masterWalletKeyLabel: process.env.MASTER_WALLET_KEY_LABEL || undefined,
     agentSeedSol: Number(process.env.AGENT_SEED_SOL) || 0.05,
     koraRpcUrl: process.env.KORA_RPC_URL || undefined,
     koraApiKey: process.env.KORA_API_KEY || undefined,

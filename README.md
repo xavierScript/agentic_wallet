@@ -24,70 +24,35 @@ A **TUI (terminal UI)** lets human operators observe all wallet state and audit 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    AI Agent Layer                                  │
-│   Claude Desktop │ VS Code Copilot │ Cursor │ Custom MCP Client  │
-│              Claude Code │ Any shell-capable agent                │
-└──────────┬───────────────────────────────────────┬───────────────┘
-           │  Model Context Protocol (stdio)        │  bash skills/scripts/
-┌──────────▼───────────────────────────────────┐   │
-│         MCP Server  (@agentic-wallet/mcp-server)  │   │
-│                                               │   │
-│  Tools (16)         Resources (9)  Prompts (8)│   │
-│  ──────────────     ─────────────  ──────────-│   │
-│  create_wallet      wallet://…     wallet-    │   │
-│  list_wallets       wallet://…/id  setup      │   │
-│  get_balance        wallet://…/pol trading-   │   │
-│  send_sol           wallet://audit strategy   │   │
-│  send_token         wallet://sys/  portfolio- │   │
-│  swap_tokens        wallet://x402  rebalance  │   │
-│  write_memo         trading://str  autonomous-│   │
-│  create_token_mint               trading      │   │
-│  mint_tokens                     risk-assess  │   │
-│  get_audit_logs                  daily-report │   │
-│  get_status                      security-    │   │
-│  get_policy                      audit        │   │
-│  pay_x402                        x402-payment │   │
-│  probe_x402                                   │   │
-│  fetch_prices                                 │   │
-│  evaluate_strategy                            │   │
-│  ✗ close_wallet — human-only, CLI only        │   │
-└──────────┬────────────────────────────────────┘   │
-           │                               ┌─────────▼──────────────┐
-           │                               │  Bash Scripts (5)       │
-           │                               │  skills/scripts/        │
-           │                               │  ─────────────────────  │
-           │                               │  airdrop.sh             │
-           │                               │  check-balance.sh       │
-           │                               │  audit-summary.sh       │
-           │                               │  tx-lookup.sh           │
-           │                               │  health-check.sh        │
-           │                               │  (read-only except      │
-           │                               │   airdrop — no signing) │
-           └───────────────────────────────┴──────────┬─────────────┘
-                           │
-┌──────────────────────────▼───────────────────────────────────────┐
-│               Wallet Core  (@agentic-wallet/core)                  │
-│                                                                    │
-│  KeyManager          AES-256-GCM encrypted keystores on disk      │
-│  WalletService       Sign & send (legacy + versioned txs)         │
-│  PolicyEngine        Spend caps, rate limits, program allowlists  │
-│  AuditLogger         Append-only JSONL audit trail                │
-│  TransactionBuilder  SOL + SPL token transfer construction        │
-│  SplTokenService     Mint creation, token account management      │
-│  JupiterService      DEX aggregator — quote + swap                │
-│  X402Client          x402 HTTP payment protocol client            │
-│  SolanaConnection    RPC wrapper with blockhash caching           │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │
-┌──────────────────────────▼───────────────────────────────────────┐
-│               Solana Blockchain (devnet by default)                │
-└──────────────────────────────────────────────────────────────────┘
+  AI Agent
+  Claude Desktop · VS Code Copilot · Cursor · Custom MCP Client
+        │ MCP (stdio)                              │ bash
+        ▼                                          ▼
+  ┌─────────────────────────────┐     ┌────────────────────────┐
+  │  MCP Server                 │     │  Bash Scripts (5)      │
+  │  16 Tools                   │     │  skills/scripts/       │
+  │  9 Resources                │     │  (read-only, no keys)  │
+  │  8 Prompts                  │     └────────────────────────┘
+  │  ✗ close_wallet (human only)│
+  └──────────────┬──────────────┘
+                 │
+        ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Wallet Core                                                │
+  │  KeyManager     — AES-256-GCM encrypted keystores on disk  │
+  │  WalletService  — sign & send (legacy + versioned txs)     │
+  │  PolicyEngine   — spend caps, rate limits, allowlists      │
+  │  AuditLogger    — append-only JSONL audit trail            │
+  │  Jupiter        — DEX quote + swap                         │
+  │  Kora           — optional gasless fee relay               │
+  │  x402Client     — HTTP micropayment protocol               │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
+                    Solana (devnet / mainnet-beta)
 
-┌──────────────────────────────────────────────────────────────────┐
-│          CLI / TUI  (@agentic-wallet/cli)  — human operator       │
-│  Dashboard │ Wallet list │ Logs view │ Close wallet (human-only)  │
-└──────────────────────────────────────────────────────────────────┘
+  CLI / TUI — human operator
+  Dashboard · Wallet list · Logs · Close wallet (human-only)
 ```
 
 ---
@@ -192,7 +157,9 @@ OWNER_ADDRESS=<your-solana-address>
 KORA_RPC_URL=http://localhost:8080
 
 # Optional — auto-fund newly created agent wallets from a master wallet
-MASTER_WALLET_SECRET_KEY=<base58-secret-key>
+# See "Secure Key Storage" section below — use `pnpm key:import` instead of
+# storing the raw key here.
+MASTER_WALLET_KEY_LABEL=master-funder   # label assigned during pnpm key:import
 AGENT_SEED_SOL=0.05
 ```
 
@@ -513,17 +480,77 @@ See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
 
 ## Environment Variables
 
-| Variable                   | Default                         | Description                                                             |
-| -------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
-| `WALLET_PASSPHRASE`        | _(required)_                    | Encrypts all keystores on disk                                          |
-| `SOLANA_RPC_URL`           | `https://api.devnet.solana.com` | RPC endpoint                                                            |
-| `SOLANA_CLUSTER`           | `devnet`                        | `devnet` / `testnet` / `mainnet-beta`                                   |
-| `OWNER_ADDRESS`            | _(optional)_                    | Receives swept SOL when a wallet is closed                              |
-| `LOG_LEVEL`                | `info`                          | `debug` / `info` / `warn` / `error`                                     |
-| `KORA_RPC_URL`             | _(optional)_                    | Kora paymaster URL — enables gasless txs; omit to use standard fee path |
-| `KORA_API_KEY`             | _(optional)_                    | API key for authenticated Kora nodes                                    |
-| `MASTER_WALLET_SECRET_KEY` | _(optional)_                    | Base58 secret key — auto-funds new agent wallets on creation            |
-| `AGENT_SEED_SOL`           | `0.05`                          | SOL seeded to each new agent wallet from master wallet                  |
+| Variable                   | Default                         | Description                                                                                               |
+| -------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `WALLET_PASSPHRASE`        | _(required)_                    | Encrypts all keystores on disk                                                                            |
+| `SOLANA_RPC_URL`           | `https://api.devnet.solana.com` | RPC endpoint                                                                                              |
+| `SOLANA_CLUSTER`           | `devnet`                        | `devnet` / `testnet` / `mainnet-beta`                                                                     |
+| `OWNER_ADDRESS`            | _(optional)_                    | Receives swept SOL when a wallet is closed                                                                |
+| `LOG_LEVEL`                | `info`                          | `debug` / `info` / `warn` / `error`                                                                       |
+| `KORA_RPC_URL`             | _(optional)_                    | Kora paymaster URL — enables gasless txs; omit to use standard fee path                                   |
+| `KORA_API_KEY`             | _(optional)_                    | API key for authenticated Kora nodes                                                                      |
+| `MASTER_WALLET_KEY_LABEL`  | _(optional)_                    | Keystore label for master wallet — set after running `pnpm key:import`                                    |
+| `MASTER_WALLET_SECRET_KEY` | _(optional, legacy)_            | Raw base58 key — used as fallback if `MASTER_WALLET_KEY_LABEL` not set                                    |
+| `AGENT_SEED_SOL`           | `0.05`                          | SOL seeded to each new agent wallet from master wallet                                                    |
+| `KORA_SIGNER_PRIVATE_KEY`  | _(optional)_                    | Path to `kora/kora-signer.json` (recommended) or raw base58 key. Required when running a local Kora node. |
+
+---
+
+## Secure Key Storage
+
+Raw Solana base58 private keys should **not** live in `.env` on disk. This project ships a one-time import script that encrypts your operator keys into the same AES-256-GCM keystore used for all agent wallets — so the raw secret is never written to disk.
+
+### Why bother?
+
+| Storage method                         | Raw key on disk? | Encrypted at rest?     | Recommended   |
+| -------------------------------------- | ---------------- | ---------------------- | ------------- |
+| `MASTER_WALLET_SECRET_KEY=…` in `.env` | ✓ plaintext      | ✗                      | dev/test only |
+| `pnpm key:import` → encrypted keystore | ✗                | ✓ AES-256-GCM + PBKDF2 | ✓             |
+
+The keystore encryption uses `WALLET_PASSPHRASE`, which **is** fine to keep in `.env` because it is a passphrase, not a private key.
+
+### One-time import
+
+```bash
+# 1. Add your raw key temporarily to .env
+MASTER_WALLET_SECRET_KEY=<your-base58-key>
+
+# 2. Run the import script (builds wallet-core first, then imports)
+pnpm key:import
+
+# 3. Follow the printed instructions:
+#    - Remove MASTER_WALLET_SECRET_KEY from .env
+#    - Add:  MASTER_WALLET_KEY_LABEL=master-funder
+#    - Clear your shell history
+```
+
+Sample output:
+
+```
+Agentic Wallet — System Key Import
+
+1. Master Funder Wallet (MASTER_WALLET_SECRET_KEY)
+✔  Encrypted and stored as "master-funder"
+   Keystore ID : 4a7f1c3e-…
+   Public key  : 55czFRi1…
+   Stored at   : ~/.agentic-wallet/keys/4a7f1c3e-….json
+
+Done
+✔  1 key(s) imported into the encrypted keystore.
+
+Next steps — update your .env:
+  # Remove this line:
+  MASTER_WALLET_SECRET_KEY=<your-raw-key>
+
+  # Add this line instead:
+  MASTER_WALLET_KEY_LABEL=master-funder
+```
+
+### How it works at runtime
+
+When `MASTER_WALLET_KEY_LABEL` is set, `service-factory.ts` calls `KeyManager.unlockByLabel(label)` at startup — the key is decrypted in memory using `WALLET_PASSPHRASE` and immediately used to construct the `MasterFunder` instance. The raw secret never touches disk or logs.
+
+`MASTER_WALLET_SECRET_KEY` remains supported as a fallback (for CI, Docker secrets, or existing setups), but `MASTER_WALLET_KEY_LABEL` takes precedence when both are present.
 
 ---
 

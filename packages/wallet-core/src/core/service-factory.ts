@@ -52,13 +52,34 @@ export function createCoreServices(): CoreServices {
 
   const auditLogger = new AuditLogger(config.logDir);
 
-  // Master funder — returns null when MASTER_WALLET_SECRET_KEY is not set
-  const masterFunder = MasterFunder.create(
-    config.masterWalletSecretKey,
-    config.agentSeedSol,
-    connection,
-    auditLogger,
-  );
+  // Master funder — prefer encrypted keystore label over raw env key
+  let masterFunder: MasterFunder | null = null;
+  if (config.masterWalletKeyLabel) {
+    // Secure path: key was imported once via `pnpm key:import` and lives in
+    // the AES-256-GCM keystore — no raw secret ever in env at runtime.
+    const keypair = keyManager.unlockByLabel(config.masterWalletKeyLabel);
+    if (keypair) {
+      masterFunder = MasterFunder.fromKeypair(
+        keypair,
+        config.agentSeedSol,
+        connection,
+        auditLogger,
+      );
+    } else {
+      console.warn(
+        `\x1b[33m⚠  MASTER_WALLET_KEY_LABEL="${config.masterWalletKeyLabel}" not found in keystore. ` +
+          `Run \`pnpm key:import\` to import the key, or check the label. Auto-funding disabled.\x1b[0m`,
+      );
+    }
+  } else {
+    // Legacy / fallback path: raw base58 key from MASTER_WALLET_SECRET_KEY env var.
+    masterFunder = MasterFunder.create(
+      config.masterWalletSecretKey,
+      config.agentSeedSol,
+      connection,
+      auditLogger,
+    );
+  }
 
   // Kora gasless relay — returns null when KORA_RPC_URL is not set
   const koraService = KoraService.create(config.koraRpcUrl, config.koraApiKey);

@@ -9,6 +9,7 @@
     "dev": "pnpm -r --parallel dev",
     "start": "pnpm build && pnpm cli",
     "cli": "pnpm --filter @agentic-wallet/cli build && node packages/cli/dist/index.js",
+    "key:import": "pnpm --filter @agentic-wallet/core build && node packages/wallet-core/dist/scripts/import-system-keys.js",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r clean"

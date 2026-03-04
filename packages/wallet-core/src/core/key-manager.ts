@@ -214,6 +214,25 @@ export class KeyManager {
   }
 
   /**
+   * Find the first keystore entry whose label matches exactly.
+   * Returns `null` when no match is found.
+   */
+  findByLabel(label: string): KeystoreEntry | null {
+    const entries = this.listWallets();
+    return entries.find((e) => e.label === label) ?? null;
+  }
+
+  /**
+   * Decrypt and return the Keypair for the first wallet whose label matches.
+   * Returns `null` when no wallet with that label exists in the keystore.
+   */
+  unlockByLabel(label: string): Keypair | null {
+    const entry = this.findByLabel(label);
+    if (!entry) return null;
+    return this.unlockWallet(entry.id);
+  }
+
+  /**
    * Delete a wallet keystore from disk.
    */
   deleteWallet(walletId: string): void {
