@@ -477,19 +477,34 @@ agentic-wallet/
 
 ## x402 Payment Protocol Integration
 
-The wallet integrates [x402](https://github.com/coinbase/x402) — Coinbase's open standard for HTTP-native payments. This lets AI agents **autonomously pay for x402-protected APIs** using their managed Solana wallets.
+The wallet integrates the x402 HTTP payment protocol for Solana — an open standard where a server returns `402 Payment Required`, the client pays on-chain and retries, the server verifies the transaction, and the resource is returned.
+
+> **Note:** `https://x402.org/protected` is Coinbase's Base/EVM reference server — it is **not** compatible with Solana transactions. For a Solana-native x402 demo you need a local server (see setup below).
+
+### Prerequisite — run a local Solana x402 server
+
+```bash
+git clone https://github.com/Woody4618/x402-solana-examples
+cd x402-solana-examples && npm install
+# Fund ./pay-in-usdc/client.json with devnet USDC
+# (mint: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU — use https://faucet.circle.com/)
+npm run usdc:server   # Terminal 1 — starts on http://localhost:3001
+```
+
+The wallet being used to pay must also hold devnet USDC at that mint.
 
 ### How it works
 
 1. Agent calls `pay_x402` with a URL and wallet ID
-2. The tool makes an HTTP request to the URL
+2. The tool makes an HTTP `GET` request to the URL
 3. If the server responds `402 Payment Required`, the tool:
-   - Parses the `PAYMENT-REQUIRED` header
-   - Selects a compatible Solana (SVM) payment option
-   - Builds a `TransferChecked` transaction per the x402 exact scheme
+   - Parses the `X-PAYMENT-REQUIRED` header **or** the JSON response body (native servers embed payment info in the body)
+   - Selects a compatible Solana (`solana-devnet` / `solana-mainnet` / CAIP-2) payment option
+   - Checks whether the recipient Associated Token Account exists; creates it if not
+   - Builds a plain SPL `Transfer` instruction (opcode 3) — what native servers validate
    - Signs via `WalletService` (policy checks enforced)
-   - Retries the request with the `PAYMENT-SIGNATURE` header
-4. The facilitator verifies and settles the payment on-chain
+   - Retries the request with the `X-Payment` header (base64-encoded JSON payload containing `serializedTransaction`)
+4. The server verifies and submits the transaction on-chain
 5. The resource content is returned to the agent
 
 ### Agent-callable tools
@@ -509,17 +524,17 @@ The wallet integrates [x402](https://github.com/coinbase/x402) — Coinbase's op
 ### Example agent conversation
 
 ```
-User: "Access the weather data at https://api.example.com/weather"
+User: "Access the premium content at http://localhost:3001/premium"
 
 Agent: Let me check if this requires payment...
-       [calls probe_x402(url: "https://api.example.com/weather")]
+       [calls probe_x402(url: "http://localhost:3001/premium")]
 
-       This URL requires a payment of 0.001 SOL via x402.
-       I'll use wallet abc-123 which has 1.5 SOL.
-       [calls pay_x402(wallet_id: "abc-123", url: "https://api.example.com/weather")]
+       This URL requires a payment of 0.0001 USDC via x402 on solana-devnet.
+       I'll use wallet abc-123.
+       [calls pay_x402(wallet_id: "abc-123", url: "http://localhost:3001/premium")]
 
-       Here's the weather data: { temp: 72, conditions: "sunny" }
-       Payment of 0.001 SOL settled. Tx: 5vGk...
+       Here's the premium content: { data: "Premium content - USDC payment verified!" }
+       Payment settled. Explorer: https://explorer.solana.com/tx/5vGk...?cluster=devnet
 ```
 
 ---

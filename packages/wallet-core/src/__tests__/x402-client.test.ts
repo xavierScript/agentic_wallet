@@ -22,7 +22,7 @@ function makePaymentRequired(
         payTo: "11111111111111111111111111111111",
         maxTimeoutSeconds: 60,
         extra: {
-          feePayer: "22222222222222222222222222222222",
+          feePayer: "11111111111111111111111111111111",
         },
         ...overrides,
       },
@@ -99,12 +99,52 @@ describe("X402Client", () => {
       const response = {
         headers: {
           get: (name: string) =>
-            name === "PAYMENT-REQUIRED" ? "not-valid-base64!!!" : null,
+            name === "X-PAYMENT-REQUIRED" ? "not-valid-base64!!!" : null,
         },
       } as unknown as Response;
 
       const result = client.parsePaymentRequired(response);
       expect(result).toBeNull();
+    });
+
+    it("should parse from X-PAYMENT-REQUIRED header (Coinbase standard)", () => {
+      const pr = makePaymentRequired();
+      const encoded = encodePaymentRequired(pr);
+
+      const response = {
+        headers: {
+          get: (name: string) =>
+            name === "X-PAYMENT-REQUIRED" ? encoded : null,
+        },
+      } as unknown as Response;
+
+      const result = client.parsePaymentRequired(response);
+      expect(result).not.toBeNull();
+      expect(result!.accepts[0].scheme).toBe("exact");
+    });
+
+    it("should fall back to JSON body when no header is present", () => {
+      const response = {
+        headers: { get: () => null },
+      } as unknown as Response;
+
+      const bodyText = JSON.stringify({
+        payment: {
+          recipientWallet: "11111111111111111111111111111111",
+          tokenAccount: "22222222222222222222222222222222",
+          mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          amount: 100,
+          amountUSDC: 0.0001,
+          cluster: "devnet",
+          message: "Pay to access",
+        },
+      });
+
+      const result = client.parsePaymentRequired(response, bodyText);
+      expect(result).not.toBeNull();
+      expect(result!.accepts[0].scheme).toBe("exact");
+      expect(result!.accepts[0].network).toBe("solana-devnet");
+      expect(result!.accepts[0].amount).toBe("100");
     });
   });
 
@@ -115,6 +155,26 @@ describe("X402Client", () => {
       expect(result).not.toBeNull();
       expect(result!.scheme).toBe("exact");
       expect(result!.network).toContain("solana:");
+    });
+
+    it("should match solana-devnet shorthand network name", () => {
+      const pr: PaymentRequired = {
+        x402Version: 1,
+        accepts: [
+          {
+            scheme: "exact",
+            network: "solana-devnet", // shorthand used by Coinbase/native servers
+            amount: "500",
+            asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            payTo: "11111111111111111111111111111111",
+            maxTimeoutSeconds: 60,
+            extra: { feePayer: "" },
+          },
+        ],
+      };
+      const result = client.selectRequirements(pr);
+      expect(result).not.toBeNull();
+      expect(result!.network).toBe("solana-devnet");
     });
 
     it("should return null when no SVM option exists", () => {
@@ -168,7 +228,7 @@ describe("X402Client", () => {
   });
 
   describe("buildPaymentTransaction", () => {
-    it("should build a valid transaction for native SOL", () => {
+    it("should build a valid transaction for native SOL", async () => {
       const requirements: PaymentRequirements = {
         scheme: "exact",
         network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
@@ -182,14 +242,15 @@ describe("X402Client", () => {
       };
 
       const walletPk = "11111111111111111111111111111111";
-      const tx = client.buildPaymentTransaction(requirements, walletPk);
+      const tx = await client.buildPaymentTransaction(requirements, walletPk);
 
       expect(tx).toBeInstanceOf(Transaction);
-      expect(tx.instructions).toHaveLength(3); // 2 compute budget + 1 transfer
+      // 1 instruction: SystemProgram.transfer (no compute budget for native servers)
+      expect(tx.instructions).toHaveLength(1);
       expect(tx.feePayer).toBeDefined();
     });
 
-    it("should build a valid transaction for SPL token", () => {
+    it("should build a valid transaction for SPL token", async () => {
       const requirements: PaymentRequirements = {
         scheme: "exact",
         network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
@@ -203,13 +264,14 @@ describe("X402Client", () => {
       };
 
       const walletPk = "11111111111111111111111111111111";
-      const tx = client.buildPaymentTransaction(requirements, walletPk);
+      const tx = await client.buildPaymentTransaction(requirements, walletPk);
 
       expect(tx).toBeInstanceOf(Transaction);
-      expect(tx.instructions).toHaveLength(3); // 2 compute budget + 1 transferChecked
+      // 1 instruction: SPL Transfer (no connection provided, so no ATA check)
+      expect(tx.instructions).toHaveLength(1);
     });
 
-    it("should set fee payer to the facilitator", () => {
+    it("should set fee payer to the facilitator", async () => {
       const feePayerKey = "11111111111111111111111111111111";
       const requirements: PaymentRequirements = {
         scheme: "exact",
@@ -221,11 +283,47 @@ describe("X402Client", () => {
         extra: { feePayer: feePayerKey },
       };
 
-      const tx = client.buildPaymentTransaction(
+      const tx = await client.buildPaymentTransaction(
         requirements,
         "11111111111111111111111111111111",
       );
       expect(tx.feePayer?.toBase58()).toBe(feePayerKey);
+    });
+
+    it("should fall back to wallet as fee payer when feePayer is empty", async () => {
+      const walletPk = "11111111111111111111111111111111";
+      const requirements: PaymentRequirements = {
+        scheme: "exact",
+        network: "solana-devnet",
+        amount: "1000",
+        asset: "So11111111111111111111111111111111111111112",
+        payTo: walletPk,
+        maxTimeoutSeconds: 60,
+        extra: { feePayer: "" }, // empty — native server, no facilitator
+      };
+
+      const tx = await client.buildPaymentTransaction(requirements, walletPk);
+      expect(tx.feePayer?.toBase58()).toBe(walletPk);
+    });
+
+    it("should use plain Transfer opcode (3 not 12) for SPL tokens", async () => {
+      const requirements: PaymentRequirements = {
+        scheme: "exact",
+        network: "solana-devnet",
+        amount: "100",
+        asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        payTo: "11111111111111111111111111111111",
+        maxTimeoutSeconds: 60,
+        extra: { feePayer: "" },
+      };
+
+      const tx = await client.buildPaymentTransaction(
+        requirements,
+        "11111111111111111111111111111111",
+      );
+      // Find the SPL Token instruction and verify it's Transfer (3), not TransferChecked (12)
+      const splIx = tx.instructions[tx.instructions.length - 1];
+      expect(splIx.data[0]).toBe(3);
     });
   });
 
@@ -297,7 +395,7 @@ describe("X402Client", () => {
         text: async () => "",
         headers: {
           get: (name: string) =>
-            name === "PAYMENT-REQUIRED"
+            name === "X-PAYMENT-REQUIRED"
               ? encoded
               : name === "content-type"
                 ? "text/plain"
@@ -315,6 +413,77 @@ describe("X402Client", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("exceeds max");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it("should send X-Payment header (not PAYMENT-SIGNATURE) on retry", async () => {
+      // Use a small amount so it passes the max-limit check
+      const pr = makePaymentRequired({ amount: "1000" });
+      const encoded = encodePaymentRequired(pr);
+
+      const originalFetch = globalThis.fetch;
+      let callCount = 0;
+      let capturedXPayment: string | null = null;
+      let capturedPaymentSignature: string | null = null;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (_url: string, opts: RequestInit) => {
+          callCount++;
+          if (callCount === 1) {
+            // Initial request → 402
+            return {
+              status: 402,
+              ok: false,
+              text: async () => "",
+              headers: {
+                get: (name: string) =>
+                  name === "X-PAYMENT-REQUIRED" ? encoded : null,
+              },
+            };
+          }
+          // Retry request — capture the payment header
+          const h = opts?.headers as Headers | Record<string, string>;
+          if (h && typeof (h as Headers).get === "function") {
+            capturedXPayment = (h as Headers).get("X-Payment");
+            capturedPaymentSignature = (h as Headers).get("PAYMENT-SIGNATURE");
+          }
+          return {
+            status: 200,
+            ok: true,
+            text: async () => "premium content",
+            headers: { get: () => null },
+          };
+        });
+
+      // Mock getLatestBlockhash on connection — not needed; signTx is a passthrough
+      try {
+        const result = await client.payForResource(
+          "https://example.com/paid",
+          {},
+          async (tx) => {
+            // Simulate blockhash hydration + sign (no real keypair needed for header test)
+            tx.recentBlockhash = "11111111111111111111111111111111";
+            return tx;
+          },
+          "11111111111111111111111111111111",
+        );
+        void result; // result not checked here — header behaviour is what we test
+
+        // The retry should have been made
+        expect(callCount).toBe(2);
+        // Header must be X-Payment, not PAYMENT-SIGNATURE
+        expect(capturedXPayment).not.toBeNull();
+        expect(capturedPaymentSignature).toBeNull();
+
+        // Parse the X-Payment payload and verify field is serializedTransaction
+        const payload = JSON.parse(
+          Buffer.from(capturedXPayment!, "base64").toString("utf-8"),
+        );
+        expect(payload.payload).toHaveProperty("serializedTransaction");
+        expect(payload.payload).not.toHaveProperty("transaction");
+        expect(payload.x402Version).toBe(1);
       } finally {
         globalThis.fetch = originalFetch;
       }

@@ -551,7 +551,7 @@ Kora covers all five **legacy** transaction tools (`Transaction` class). Jupiter
 | `create_token_mint` | Legacy — SPL Token      | ✅                                                                                                                                                                             |
 | `mint_tokens`       | Legacy — SPL Token      | ✅                                                                                                                                                                             |
 | `swap_tokens`       | `VersionedTransaction`  | ❌ Jupiter v6 `/swap` bakes `userPublicKey` as fee payer into the compiled `MessageV0` — there is no `feePayerPublicKey` parameter; the fee payer cannot be swapped post-build |
-| `pay_x402`          | x402 facilitator relay  | ❌ The x402 facilitator broadcasts the transaction; `WalletService.signAndSendTransaction` is not in the path                                                                  |
+| `pay_x402`          | x402 server relay       | ❌ The x402 server broadcasts the transaction after verifying the `X-Payment` header; `WalletService.signAndSendTransaction` is not in the path                                                                  |
 
 ### Graceful fallback
 
@@ -565,19 +565,28 @@ When Kora is active, `TransactionResult.gasless` is `true` and the audit log rec
 
 ## 13. x402 HTTP Payment Protocol
 
-[x402](https://github.com/coinbase/x402) is Coinbase’s open standard for HTTP-native payments. A server responds `402 Payment Required` with a `PAYMENT-REQUIRED` header describing the payment; the client pays on-chain and retries with a `PAYMENT-SIGNATURE` header.
+[x402](https://github.com/coinbase/x402) is Coinbase's open standard for HTTP-native payments. A server responds `402 Payment Required`; the client pays on-chain and retries with an `X-Payment` header.
+
+> **Important:** `https://x402.org/protected` runs on Base (EVM). For Solana demos, run a local server:
+> ```bash
+> git clone https://github.com/Woody4618/x402-solana-examples
+> cd x402-solana-examples && npm install
+> npm run usdc:server   # http://localhost:3001
+> ```
+> The paying wallet must hold devnet USDC (mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
 
 ### Flow
 
 ```
 Agent  →  pay_x402(url, wallet_id)
-  →  fetch(url)
-  ⊐  HTTP 402 + PAYMENT-REQUIRED header
-        { amount, asset, payTo, network, scheme: "exact" }
+  →  GET url
+  ⊐  HTTP 402 + X-PAYMENT-REQUIRED header  (or JSON body for native servers)
+        { amount, asset (USDC mint), payTo (recipient ATA), network: "solana-devnet" }
   →  parse PaymentRequirements
-  →  build TransferChecked tx (SPL token exact-amount transfer)
+  →  check recipient ATA exists; create inline if not
+  →  build SPL Transfer tx  (opcode 3 — plain Transfer, not TransferChecked)
   →  WalletService signs (PolicyEngine checks apply)
-  →  fetch(url, headers: { PAYMENT-SIGNATURE: base64Tx })
+  →  GET url, headers: { X-Payment: base64(JSON { serializedTransaction }) }
   ⊐  HTTP 200 + resource content
   →  AuditLogger.log(x402:payment_success)
   →  return { body, amountPaid, settlement }

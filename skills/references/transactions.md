@@ -170,15 +170,26 @@ Any string longer than 20 characters is treated as a mint address directly.
 
 ## x402 Payment Transactions
 
+> **Prerequisite:** x402.org runs on Base (EVM). For Solana, you need a local server:
+>
+> ```bash
+> git clone https://github.com/Woody4618/x402-solana-examples
+> cd x402-solana-examples && npm install
+> npm run usdc:server   # http://localhost:3001
+> ```
+>
+> The wallet must hold devnet USDC (mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
+
 x402 payments use a specialized flow:
 
-1. Initial HTTP request to the URL
-2. Server returns `402 Payment Required` with `PAYMENT-REQUIRED` header
-3. Header contains: amount, token (USDC), payTo address, network, timeout
-4. System builds a `TransferChecked` instruction to the specified `payTo` address
-5. Transaction is **partially signed** (not submitted directly)
-6. The signed transaction is sent back as a `PAYMENT-SIGNATURE` header
-7. The x402 **facilitator** verifies and submits the transaction
-8. On success, the resource content is returned
+1. Initial `GET` request to the URL
+2. Server returns `402 Payment Required`; payment info is in the `X-PAYMENT-REQUIRED` header **or** the JSON response body (native servers use the body)
+3. Body/header contains: amount (USDC smallest units), mint address, recipient ATA, network (`solana-devnet`), timeout
+4. System checks whether the recipient Associated Token Account exists and creates it if not
+5. System builds a plain SPL `Transfer` instruction (opcode 3) — what native servers validate
+6. Transaction is signed by the wallet (fee payer = wallet, no external facilitator for native servers)
+7. The signed transaction is sent back in the `X-Payment` header as `base64(JSON { serializedTransaction })`
+8. The server verifies the transfer instruction, submits the transaction, and confirms on-chain
+9. On success, the resource content is returned
 
-**Key difference from normal transfers:** The tool signs but does not submit. The facilitator submits. This means the payment is atomic with the resource delivery.
+**Key difference from normal transfers:** The tool signs but does not broadcast. The server verifies the instruction contents, submits the transaction, and only serves the resource after on-chain confirmation.

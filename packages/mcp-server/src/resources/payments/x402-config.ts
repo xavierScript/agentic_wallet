@@ -39,13 +39,26 @@ export function registerX402ConfigResource(
             text: JSON.stringify(
               {
                 protocol: "x402",
-                version: 2,
+                version: 1,
                 description:
-                  "x402 is an open standard for HTTP-native payments. " +
+                  "x402 is an open standard for HTTP-native payments on Solana. " +
                   "When an API responds with 402 Payment Required, the agent " +
-                  "can automatically pay using a managed Solana wallet.",
+                  "automatically builds a signed SPL Transfer transaction and " +
+                  "retries with an X-Payment header. The server verifies and " +
+                  "broadcasts the transaction, then returns the resource. " +
+                  "Note: https://x402.org/protected runs on Base (EVM). " +
+                  "For Solana use a local server: https://github.com/Woody4618/x402-solana-examples",
                 supportedSchemes: ["exact"],
-                supportedNetworks: [networkId],
+                paymentToken: {
+                  name: "USDC (devnet)",
+                  mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                  faucet: "https://faucet.circle.com/",
+                },
+                supportedNetworks: [
+                  networkId,
+                  "solana-devnet",
+                  "solana-mainnet",
+                ],
                 currentCluster: config.cluster,
                 capabilities: {
                   payForResource:

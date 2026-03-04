@@ -163,6 +163,47 @@ If Kora is unavailable at runtime, the system automatically falls back to standa
 
 ---
 
+## x402 Local Server Setup (for prompts 15 & 16)
+
+The `https://x402.org/protected` endpoint runs on Base (EVM) and is not compatible with Solana transactions. To demo the x402 payment tools you need a local Solana x402 server:
+
+```bash
+git clone https://github.com/Woody4618/x402-solana-examples
+cd x402-solana-examples && npm install
+```
+
+**Fund a payer keypair with devnet USDC:**
+
+1. Generate or reuse a keypair and save it as `./pay-in-usdc/client.json` (array of bytes)
+2. Get devnet USDC (mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) from <https://faucet.circle.com/>
+3. The agent wallet paying through the MCP server also needs devnet USDC at that same mint
+
+**Start the server:**
+
+```bash
+npm run usdc:server   # Terminal 1 — starts on http://localhost:3001
+```
+
+**Demo prompts (send to your MCP agent):**
+
+Probe (no payment):
+
+```
+Check whether http://localhost:3001/premium requires x402 payment. If a payment
+is required, report the price, accepted payment token, and target network.
+Do not submit any payment at this stage.
+```
+
+Pay and retrieve:
+
+```
+Access http://localhost:3001/premium using wallet [WALLET_ID]. Handle the full
+x402 payment flow autonomously — discover the price, execute the payment,
+and return the resource content along with the payment transaction signature.
+```
+
+---
+
 ## Verification
 
 ### MCP path

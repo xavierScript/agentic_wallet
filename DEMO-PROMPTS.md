@@ -223,9 +223,17 @@ initial auto-funding event from the master wallet.
 ## 15. Probe an x402 Resource
 
 > **Demonstrates:** `probe_x402` tool, payment-free cost discovery — an agent can inspect pricing before committing any funds.
+>
+> **⚠️ Prerequisite:** `https://x402.org/protected` is a Coinbase Base/EVM server — it won't work with this Solana implementation. Run a local Solana x402 server first:
+> ```bash
+> git clone https://github.com/Woody4618/x402-solana-examples
+> cd x402-solana-examples && npm install
+> # fund ./pay-in-usdc/client.json with devnet USDC, then:
+> npm run usdc:server   # starts on http://localhost:3001
+> ```
 
 ```
-Check whether https://x402.org/protected requires x402 payment. If a payment
+Check whether http://localhost:3001/premium requires x402 payment. If a payment
 is required, report the price, accepted payment token, and target network.
 Do not submit any payment at this stage.
 ```
@@ -235,9 +243,11 @@ Do not submit any payment at this stage.
 ## 16. Autonomous x402 Payment
 
 > **Demonstrates:** `pay_x402` tool — the complete autonomous payment loop: HTTP 402 received → payment requirements parsed → Solana transaction signed and sent → request retried with proof → resource content returned to the agent.
+>
+> **⚠️ Prerequisite:** Start the local Solana x402 server (see prompt 15 setup). The wallet must hold devnet USDC at the mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`.
 
 ```
-Access https://x402.org/protected using wallet [WALLET_ID]. Handle the full
+Access http://localhost:3001/premium using wallet [WALLET_ID]. Handle the full
 x402 payment flow autonomously — discover the price, execute the payment,
 and return the resource content along with the payment transaction signature.
 ```

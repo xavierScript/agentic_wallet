@@ -130,6 +130,7 @@ export function registerPayX402Tool(
           fetchOptions,
           signTx,
           entry.publicKey,
+          services.connection.getConnection(),
         );
 
         if (!result.success) {

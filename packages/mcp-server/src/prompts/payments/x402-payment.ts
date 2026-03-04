@@ -54,7 +54,7 @@ export function registerX402PaymentPrompt(
                 `Please perform these steps in order:`,
                 ``,
                 `1. **Check wallet readiness**: ${walletInstructions}`,
-                `   - Verify the wallet has sufficient SOL balance for the payment`,
+                `   - Verify the wallet holds devnet USDC (mint \`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU\`) — x402 payments on Solana use USDC, not SOL`,
                 `   - Check the wallet's policy allows the transaction`,
                 ``,
                 `2. **Probe the resource**: Use \`probe_x402\` to check the URL`,

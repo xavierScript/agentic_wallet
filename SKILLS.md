@@ -148,9 +148,12 @@ These scripts run directly in a shell — no MCP server needed. All output JSON.
 
 ### Pay for an x402 API
 
+> Requires a Solana-native x402 server. See `skills/references/setup.md` —
+> **x402 Local Server Setup** section. The wallet must hold devnet USDC.
+
 ```
 1. probe_x402(url)                      → discover price and requirements
-2. get_balance(wallet_id)               → confirm funds cover the cost
+2. get_balance(wallet_id)               → confirm USDC balance covers the cost
 3. pay_x402(wallet_id, url)             → pay and retrieve content
 ```
 

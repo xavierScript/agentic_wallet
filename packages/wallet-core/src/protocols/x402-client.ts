@@ -5,10 +5,10 @@
  *
  * x402 is an open standard (by Coinbase) for HTTP-native payments. When an
  * HTTP server responds with `402 Payment Required`, this client:
- *   1. Parses the `PAYMENT-REQUIRED` header (Base64-encoded PaymentRequired)
+ *   1. Parses the `X-PAYMENT-REQUIRED` header (or JSON body) as a PaymentRequired object
  *   2. Selects the best SVM `PaymentRequirements` the wallet can fulfil
- *   3. Builds and partially signs a Solana `TransferChecked` transaction
- *   4. Retries the original request with the `PAYMENT-SIGNATURE` header
+ *   3. Builds and signs a Solana Transfer (SPL) or SystemTransfer (SOL) transaction
+ *   4. Retries the original request with the `X-Payment` header (base64 JSON)
  *
  * The agent never touches raw private keys — signing goes through
  * `WalletService`, which enforces policy checks before any signature.
@@ -20,14 +20,15 @@
 import {
   PublicKey,
   Transaction,
-  TransactionInstruction,
   SystemProgram,
   LAMPORTS_PER_SOL,
+  Connection,
 } from "@solana/web3.js";
 import {
-  createTransferCheckedInstruction,
+  createTransferInstruction,
   getAssociatedTokenAddressSync,
-  TOKEN_PROGRAM_ID,
+  getAccount,
+  createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ export interface PaymentRequired {
 }
 
 /**
- * Payload sent back to the server in the PAYMENT-SIGNATURE header.
+ * Payload sent back to the server in the X-Payment header.
  */
 export interface PaymentPayload {
   x402Version: number;
@@ -75,12 +76,12 @@ export interface PaymentPayload {
   network: string;
   payload: {
     /** Base64-encoded serialised partially-signed transaction */
-    transaction: string;
+    serializedTransaction: string;
   };
 }
 
 /**
- * Settlement receipt returned in the PAYMENT-RESPONSE header on success.
+ * Settlement receipt returned in the X-PAYMENT-RESPONSE header on success.
  */
 export interface SettlementResponse {
   success: boolean;
@@ -174,6 +175,10 @@ export class X402Client {
    * @param options    - Standard fetch options (method, headers, body …)
    * @param signTx     - Callback that signs a legacy Transaction via WalletService
    * @param walletPublicKey - The payer wallet's base58 public key
+   * @param connection - Optional Solana RPC connection used to check/create
+   *                     recipient Associated Token Accounts before signing.
+   *                     Without this, SPL payments will fail if the recipient
+   *                     ATA does not yet exist.
    * @returns Payment result with the resource body or error details
    */
   async payForResource(
@@ -181,6 +186,7 @@ export class X402Client {
     options: RequestInit = {},
     signTx: (tx: Transaction) => Promise<Transaction>,
     walletPublicKey: string,
+    connection?: Connection,
   ): Promise<X402PaymentResult> {
     // ── Step 1: Initial request ──────────────────────────────────────────
     const initialResponse = await fetch(url, options);
@@ -207,7 +213,15 @@ export class X402Client {
     }
 
     // ── Step 2: Parse payment requirements ───────────────────────────────
-    const paymentRequired = this.parsePaymentRequired(initialResponse);
+    // Read the 402 body — some servers embed PaymentRequired in the JSON body
+    // rather than (or in addition to) the X-PAYMENT-REQUIRED header.
+    let body402: string | undefined;
+    try {
+      body402 = await initialResponse.text();
+    } catch {
+      // Non-fatal — header-only servers won't have a useful body
+    }
+    const paymentRequired = this.parsePaymentRequired(initialResponse, body402);
     if (!paymentRequired) {
       return {
         success: false,
@@ -246,9 +260,10 @@ export class X402Client {
     }
 
     // ── Step 5: Build the payment transaction ────────────────────────────
-    const paymentTx = this.buildPaymentTransaction(
+    const paymentTx = await this.buildPaymentTransaction(
       requirements,
       walletPublicKey,
+      connection,
     );
 
     // ── Step 6: Sign via WalletService (policy checks happen here) ───────
@@ -275,21 +290,22 @@ export class X402Client {
 
     // ── Step 8: Build the payment payload ────────────────────────────────
     const paymentPayload: PaymentPayload = {
-      x402Version: 2,
+      x402Version: 1,
       scheme: "exact",
       network: requirements.network,
       payload: {
-        transaction: txBase64,
+        serializedTransaction: txBase64,
       },
     };
 
-    const paymentSignatureHeader = Buffer.from(
-      JSON.stringify(paymentPayload),
-    ).toString("base64");
+    const xPaymentHeader = Buffer.from(JSON.stringify(paymentPayload)).toString(
+      "base64",
+    );
 
     // ── Step 9: Retry with payment proof ─────────────────────────────────
     const retryHeaders = new Headers(options.headers || {});
-    retryHeaders.set("PAYMENT-SIGNATURE", paymentSignatureHeader);
+    // Standard x402 header is "X-Payment" (Coinbase spec, native example)
+    retryHeaders.set("X-Payment", xPaymentHeader);
 
     const paidResponse = await fetch(url, {
       ...options,
@@ -298,7 +314,10 @@ export class X402Client {
 
     // ── Step 10: Parse settlement response ───────────────────────────────
     let settlement: SettlementResponse | undefined;
-    const paymentResponseHeader = paidResponse.headers.get("PAYMENT-RESPONSE");
+    // Try X-PAYMENT-RESPONSE (Coinbase standard) then legacy PAYMENT-RESPONSE
+    const paymentResponseHeader =
+      paidResponse.headers.get("X-PAYMENT-RESPONSE") ??
+      paidResponse.headers.get("PAYMENT-RESPONSE");
     if (paymentResponseHeader) {
       try {
         settlement = JSON.parse(
@@ -327,37 +346,119 @@ export class X402Client {
 
   /**
    * Extract and decode the PaymentRequired object from a 402 response.
+   *
+   * Tries, in order:
+   *  1. `X-PAYMENT-REQUIRED` header — Coinbase x402 standard
+   *  2. `PAYMENT-REQUIRED` header   — legacy / older implementations
+   *  3. Response body as JSON       — native/minimal server implementations
    */
-  parsePaymentRequired(response: Response): PaymentRequired | null {
-    const header = response.headers.get("PAYMENT-REQUIRED");
-    if (!header) return null;
+  parsePaymentRequired(
+    response: Response,
+    bodyText?: string,
+  ): PaymentRequired | null {
+    // Helper: try to decode a base64 header → PaymentRequired
+    const tryHeader = (name: string): PaymentRequired | null => {
+      const header = response.headers.get(name);
+      if (!header) return null;
+      try {
+        const decoded = Buffer.from(header, "base64").toString("utf-8");
+        const parsed = JSON.parse(decoded) as PaymentRequired;
+        if (!parsed.accepts || !Array.isArray(parsed.accepts)) return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    };
 
-    try {
-      const decoded = Buffer.from(header, "base64").toString("utf-8");
-      const parsed = JSON.parse(decoded) as PaymentRequired;
-      if (!parsed.accepts || !Array.isArray(parsed.accepts)) return null;
-      return parsed;
-    } catch {
-      return null;
+    // 1. Coinbase standard header
+    const fromXHeader = tryHeader("X-PAYMENT-REQUIRED");
+    if (fromXHeader) return fromXHeader;
+
+    // 2. Legacy header (keep backward-compat)
+    const fromLegacyHeader = tryHeader("PAYMENT-REQUIRED");
+    if (fromLegacyHeader) return fromLegacyHeader;
+
+    // 3. JSON body fallback (native/minimal server implementations)
+    if (bodyText) {
+      try {
+        const body = JSON.parse(bodyText);
+        // Standard Coinbase body: { x402Version, accepts }
+        if (body.accepts && Array.isArray(body.accepts)) {
+          return body as PaymentRequired;
+        }
+        // Native/minimal server body: { payment: { recipient|recipientWallet, tokenAccount, mint, amount, cluster } }
+        if (body.payment) {
+          const p = body.payment;
+          const network =
+            p.cluster === "devnet"
+              ? "solana-devnet"
+              : p.cluster === "mainnet-beta"
+                ? "solana-mainnet"
+                : `solana:${p.cluster}`;
+          // Normalise into PaymentRequired shape so the rest of the flow works.
+          // payTo: SPL servers provide tokenAccount (recipient ATA);
+          //        SOL servers provide recipient (wallet address).
+          // feePayer: left empty — native servers have no facilitator,
+          //           so the wallet pays its own gas (falls back in buildPaymentTransaction).
+          return {
+            x402Version: 1,
+            accepts: [
+              {
+                scheme: "exact",
+                network,
+                amount: String(p.amount ?? "0"),
+                asset: p.mint ?? NATIVE_SOL_MINT,
+                payTo: p.tokenAccount ?? p.recipient ?? p.recipientWallet ?? "",
+                maxTimeoutSeconds: 60,
+                extra: { feePayer: "" }, // wallet is its own fee payer
+                description: p.message,
+                // Stash recipientWallet so buildPaymentTransaction can create
+                // a missing ATA if needed (SPL only).
+                _recipientWallet: p.recipientWallet,
+              } as any,
+            ],
+          } as PaymentRequired;
+        }
+      } catch {
+        // Body not JSON — skip
+      }
     }
+
+    return null;
   }
 
   /**
    * Select the best matching PaymentRequirements for our wallet.
    * Prefers the configured network and "exact" scheme.
+   *
+   * Handles both CAIP-2 identifiers (`solana:EtWTRA…`) and the shorthand
+   * network names used by the Coinbase reference implementation and native
+   * servers (`solana-devnet`, `solana-mainnet`, `solana-testnet`).
    */
   selectRequirements(
     paymentRequired: PaymentRequired,
   ): PaymentRequirements | null {
-    // First try: exact match on preferred network
+    // Normalise a network string to its canonical CAIP-2 id for comparison
+    const normalise = (n: string): string => {
+      if (n === "solana-devnet") return SOLANA_DEVNET;
+      if (n === "solana-mainnet" || n === "solana-mainnet-beta")
+        return SOLANA_MAINNET;
+      return n; // already CAIP-2 or unknown
+    };
+
+    const preferredNorm = normalise(this.config.preferredNetwork);
+
+    // First try: exact match on preferred network (after normalisation)
     const preferred = paymentRequired.accepts.find(
-      (r) => r.scheme === "exact" && r.network === this.config.preferredNetwork,
+      (r) => r.scheme === "exact" && normalise(r.network) === preferredNorm,
     );
     if (preferred) return preferred;
 
     // Second try: any SVM network with exact scheme
     const anySvm = paymentRequired.accepts.find(
-      (r) => r.scheme === "exact" && r.network.startsWith("solana:"),
+      (r) =>
+        r.scheme === "exact" &&
+        (r.network.startsWith("solana:") || r.network.startsWith("solana-")),
     );
     return anySvm || null;
   }
@@ -367,56 +468,33 @@ export class X402Client {
   /**
    * Build the Solana payment transaction per the x402 SVM exact scheme.
    *
-   * The transaction contains:
-   *   1. ComputeBudget: SetComputeUnitLimit
-   *   2. ComputeBudget: SetComputeUnitPrice
-   *   3. SPL Token: TransferChecked (or System: Transfer for native SOL)
+   * For SPL tokens, uses a plain `Transfer` instruction (opcode 3) — this is
+   * what native/minimal x402 servers validate for. If a Solana `connection`
+   * is provided, the recipient's Associated Token Account is created inline
+   * when it does not yet exist (matching the Woody reference client behaviour).
    *
-   * The fee payer is set to the facilitator's address. The transaction is
-   * only partially signed (by the client wallet) — the facilitator adds
-   * its signature before submitting to the network.
+   * For native SOL, uses `SystemProgram.transfer`.
+   *
+   * The fee payer defaults to the wallet itself (no external facilitator in
+   * the native server pattern). When `requirements.extra.feePayer` is
+   * non-empty a facilitator address is used instead.
    */
-  buildPaymentTransaction(
-    requirements: PaymentRequirements,
+  async buildPaymentTransaction(
+    requirements: PaymentRequirements & { _recipientWallet?: string },
     walletPublicKey: string,
-  ): Transaction {
+    connection?: Connection,
+  ): Promise<Transaction> {
     const payer = new PublicKey(walletPublicKey);
-    const feePayer = new PublicKey(requirements.extra.feePayer);
+    // feePayer is optional — native/minimal servers have no facilitator.
+    // Fall back to the wallet itself as fee payer in that case.
+    const feePayerKey = requirements.extra?.feePayer || walletPublicKey;
+    const feePayer = new PublicKey(feePayerKey);
     const payTo = new PublicKey(requirements.payTo);
     const amount = BigInt(requirements.amount);
 
     const tx = new Transaction();
 
-    // ── Compute Budget instructions ────────────────────────────────────
-    const computeBudgetProgram = new PublicKey(
-      "ComputeBudget111111111111111111111111111111",
-    );
-
-    // SetComputeUnitLimit (discriminator = 2)
-    const limitData = Buffer.alloc(5);
-    limitData.writeUInt8(2, 0);
-    limitData.writeUInt32LE(200_000, 1);
-    tx.add(
-      new TransactionInstruction({
-        keys: [],
-        programId: computeBudgetProgram,
-        data: limitData,
-      }),
-    );
-
-    // SetComputeUnitPrice (discriminator = 3)
-    const priceData = Buffer.alloc(9);
-    priceData.writeUInt8(3, 0);
-    priceData.writeBigUInt64LE(BigInt(1), 1); // 1 microlamport per CU
-    tx.add(
-      new TransactionInstruction({
-        keys: [],
-        programId: computeBudgetProgram,
-        data: priceData,
-      }),
-    );
-
-    // ── Payment instruction ────────────────────────────────────────────
+    // ── Payment instruction ────────────────────────────────────────────────
     if (requirements.asset === NATIVE_SOL_MINT) {
       // Native SOL transfer via System Program
       tx.add(
@@ -427,27 +505,54 @@ export class X402Client {
         }),
       );
     } else {
-      // SPL Token TransferChecked
+      // SPL Token Transfer (opcode 3 — plain Transfer, not TransferChecked).
+      // Native servers validate ix.data[0] === 3, so we must NOT use
+      // createTransferCheckedInstruction (opcode 12).
       const mint = new PublicKey(requirements.asset);
       const sourceAta = getAssociatedTokenAddressSync(mint, payer);
-      const destAta = getAssociatedTokenAddressSync(mint, payTo);
+      // payTo is already the recipient ATA when the server provides tokenAccount.
+      const destAta = payTo;
 
-      // For x402 exact scheme, we use TransferChecked with the mint's decimals.
-      // The facilitator verifies this matches the PaymentRequirements exactly.
-      // We default to 6 decimals (USDC standard) — the facilitator validates.
+      // If a connection is available, check whether the recipient ATA exists
+      // and prepend a createAssociatedTokenAccount instruction if not —
+      // exactly what the reference client does.
+      if (connection) {
+        let ataExists = false;
+        try {
+          await getAccount(connection, destAta);
+          ataExists = true;
+        } catch {
+          // Account does not exist or fetch failed — will create below
+        }
+        if (!ataExists) {
+          // Derive the recipient wallet: prefer the stashed _recipientWallet
+          // (from body-fallback), otherwise treat payTo AS the wallet (for
+          // Coinbase-style servers that hand us the wallet address directly).
+          const recipientWalletKey =
+            requirements._recipientWallet ?? requirements.payTo;
+          const recipientWallet = new PublicKey(recipientWalletKey);
+          tx.add(
+            createAssociatedTokenAccountInstruction(
+              payer, // payer (rent)
+              destAta, // ATA to create
+              recipientWallet, // owner
+              mint,
+            ),
+          );
+        }
+      }
+
       tx.add(
-        createTransferCheckedInstruction(
-          sourceAta,
-          mint,
-          destAta,
-          payer,
+        createTransferInstruction(
+          sourceAta, // source ATA
+          destAta, // destination ATA
+          payer, // owner / authority
           Number(amount),
-          6, // decimals — server-specified tokens typically use 6
         ),
       );
     }
 
-    // Fee payer is the facilitator (they sponsor the transaction)
+    // Fee payer is either the facilitator or the wallet itself
     tx.feePayer = feePayer;
 
     return tx;
@@ -457,26 +562,38 @@ export class X402Client {
 
   /**
    * Check whether a URL requires x402 payment without actually paying.
-   * Makes a HEAD/GET request and checks for 402 + valid header.
+   *
+   * Uses GET (not HEAD) because many x402 servers embed payment requirements
+   * in the response body, which HEAD requests do not return.
    */
   async probeResource(url: string): Promise<{
     requiresPayment: boolean;
     paymentRequired?: PaymentRequired;
     svmOptions?: PaymentRequirements[];
   }> {
-    const response = await fetch(url, { method: "HEAD" });
+    const response = await fetch(url, { method: "GET" });
 
     if (response.status !== 402) {
       return { requiresPayment: false };
     }
 
-    const paymentRequired = this.parsePaymentRequired(response);
+    // Read body so parsePaymentRequired can fall back to JSON body
+    let bodyText: string | undefined;
+    try {
+      bodyText = await response.text();
+    } catch {
+      // non-fatal
+    }
+
+    const paymentRequired = this.parsePaymentRequired(response, bodyText);
     if (!paymentRequired) {
       return { requiresPayment: true };
     }
 
     const svmOptions = paymentRequired.accepts.filter(
-      (r) => r.scheme === "exact" && r.network.startsWith("solana:"),
+      (r) =>
+        r.scheme === "exact" &&
+        (r.network.startsWith("solana:") || r.network.startsWith("solana-")),
     );
 
     return {
