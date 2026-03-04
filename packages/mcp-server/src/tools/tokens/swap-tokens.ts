@@ -2,11 +2,19 @@
  * tools/swap-tokens.ts
  *
  * MCP tool – swap tokens via Jupiter aggregator.
- * Fetches a quote, builds the swap transaction, then signs and sends
- * it through the WalletService (which enforces policies first).
+ *
+ * On **mainnet-beta**: fetches a quote, builds the swap transaction,
+ * then signs and sends it through WalletService (policy-enforced).
+ *
+ * On **devnet / testnet**: fetches a real Jupiter quote (with mainnet
+ * pricing) and returns a simulated result.  Jupiter liquidity pools
+ * and AMMs do not exist on devnet, so on-chain swap execution is not
+ * possible there.  The simulation still demonstrates the full pricing
+ * and routing pipeline.
  */
 
 import { z } from "zod";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { WalletServices } from "../../services.js";
 
@@ -24,7 +32,9 @@ export function registerSwapTokensTool(
         "Swap tokens using Jupiter aggregator — the primary DEX aggregator on Solana. " +
         "Supports SOL, USDC, USDT, BONK, JUP, and any SPL token by mint address. " +
         "Automatically finds the best route across multiple liquidity sources. " +
-        "Policy-checked before signing (spending limits, rate limits).",
+        "Policy-checked before signing (spending limits, rate limits). " +
+        "On devnet/testnet, returns a simulated swap with real Jupiter pricing " +
+        "(on-chain execution requires mainnet-beta).",
       inputSchema: {
         wallet_id: z.string().describe("Source wallet ID (UUID)"),
         input_token: z
@@ -103,6 +113,61 @@ export function registerSwapTokensTool(
       // ── Convert to raw amount ────────────────────────────────────────
       const rawAmount = jupiterService.toRawAmount(amount, inputInfo.decimals);
 
+      // ── Devnet / testnet: simulated swap (quote only) ────────────────
+      if (jupiterService.cluster !== "mainnet-beta") {
+        try {
+          const sim = await jupiterService.simulateSwap(
+            inputMint,
+            outputMint,
+            rawAmount,
+            slippage_bps,
+          );
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    simulated: true,
+                    reason: sim.reason,
+                    swap: {
+                      from: `${amount} ${sim.inputToken.symbol}`,
+                      to: `~${sim.expectedOutputAmount} ${sim.outputToken.symbol}`,
+                      minimumReceived: `${sim.minimumOutputAmount} ${sim.outputToken.symbol}`,
+                      priceImpact: `${sim.priceImpactPct}%`,
+                      slippageTolerance: `${slippage_bps / 100}%`,
+                      route: sim.routeLabels.join(" → "),
+                    },
+                    wallet: entry.publicKey,
+                    cluster: jupiterService.cluster,
+                    note:
+                      "This is a simulated swap using real Jupiter mainnet pricing. " +
+                      "No on-chain transaction was sent. To execute real swaps, " +
+                      "switch SOLANA_CLUSTER to mainnet-beta.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        } catch (err: any) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Simulated swap failed: ${err.message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
+      // ── Mainnet: full on-chain swap execution ────────────────────────
+
       // ── Fetch quote ──────────────────────────────────────────────────
       let quote;
       try {
@@ -143,7 +208,7 @@ export function registerSwapTokensTool(
         };
       }
 
-      // ── Sign and send (versioned transaction) ────────────────────────
+      // ── Sign and send ────────────────────────────────────────────────
       const expectedOutput = jupiterService.formatAmount(
         quote.outAmount,
         outputInfo.decimals,
@@ -165,25 +230,36 @@ export function registerSwapTokensTool(
       const estimatedLamports = inputMint === SOL_MINT ? Number(rawAmount) : 0;
 
       try {
-        const result = await walletService.signAndSendVersionedTransaction(
-          wallet_id,
-          swapTx,
-          {
-            action: "swap:jupiter",
-            details: {
-              inputToken: inputInfo.symbol,
-              outputToken: outputInfo.symbol,
-              inputMint,
-              outputMint,
-              inputAmount: amount,
-              expectedOutputAmount: expectedOutput,
-              slippageBps: slippage_bps,
-              priceImpactPct: quote.priceImpactPct,
-              route: routeLabels,
-            },
+        // Jupiter returns a legacy Transaction on devnet (no ALTs) and
+        // a VersionedTransaction on mainnet.  Branch accordingly.
+        const swapContext = {
+          action: "swap:jupiter",
+          details: {
+            inputToken: inputInfo.symbol,
+            outputToken: outputInfo.symbol,
+            inputMint,
+            outputMint,
+            inputAmount: amount,
+            expectedOutputAmount: expectedOutput,
+            slippageBps: slippage_bps,
+            priceImpactPct: quote.priceImpactPct,
+            route: routeLabels,
           },
-          estimatedLamports,
-        );
+        };
+
+        const result =
+          swapTx instanceof Transaction
+            ? await walletService.signAndSendTransaction(
+                wallet_id,
+                swapTx,
+                swapContext,
+              )
+            : await walletService.signAndSendVersionedTransaction(
+                wallet_id,
+                swapTx,
+                swapContext,
+                estimatedLamports,
+              );
 
         return {
           content: [

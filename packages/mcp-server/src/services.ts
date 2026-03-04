@@ -32,6 +32,7 @@ export function createServices(): WalletServices {
     defaultSlippageBps: 50,
     maxSlippageBps: 300,
     maxPriceImpactPct: 5,
+    cluster: core.config.cluster,
   });
 
   const x402Client = new X402Client({

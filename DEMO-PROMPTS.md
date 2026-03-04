@@ -11,7 +11,7 @@ The prompts are **copy-paste ready**. Replace `[WALLET_ID]`, `[RECIPIENT_ADDRESS
 The Agentic Wallet is an MCP server that gives AI agents the ability to:
 
 - Create and manage custodial Solana wallets with AES-256-GCM encrypted key storage
-- Execute on-chain actions: SOL transfers, SPL token transfers, token swaps via Jupiter, on-chain memos
+- Execute on-chain actions: SOL transfers, SPL token transfers, token swap pricing via Jupiter, on-chain memos
 - **Gasless transactions via Kora** — agent wallets never need SOL for gas; a Kora paymaster node sponsors all network fees
 - Create and mint custom SPL tokens
 - Pay for HTTP resources protected by the [x402 payment protocol](https://x402.org)
@@ -183,14 +183,15 @@ address [RECIPIENT_ADDRESS], using 9 decimals. Return the transaction signature.
 
 ## 12. Swap Tokens via Jupiter
 
-> **Demonstrates:** `swap_tokens` tool, Jupiter DEX aggregator for best-route discovery, slippage control, policy enforcement on swap transactions.
+> **Demonstrates:** `swap_tokens` tool, Jupiter DEX aggregator for best-route discovery, real mainnet pricing, slippage control, policy enforcement. On devnet, returns a simulated swap with accurate pricing (on-chain execution requires mainnet-beta).
 
 ```
 Using wallet [WALLET_ID], swap 0.001 SOL to USDC via Jupiter aggregator
 with 50 basis points of slippage tolerance. Report:
 - The best route identified
 - The expected USDC output amount
-- The final on-chain transaction signature
+- Whether the swap was simulated (devnet) or executed on-chain (mainnet)
+- The price impact percentage
 ```
 
 ---
@@ -264,7 +265,7 @@ test transaction to prove the full stack is functional end to end.
 Using wallet [WALLET_ID] and the trading_strategy prompt, propose and execute
 a strategy that maintains an 80% SOL and 20% USDC allocation as a stable
 reserve. The agent should explain its reasoning, check current holdings,
-and execute the required swap through Jupiter.
+and execute the required swap (simulated on devnet with real pricing).
 ```
 
 ---
@@ -357,7 +358,7 @@ would bring the portfolio back to target?
 Using the autonomous-trading prompt, run a 5-tick trading bot on wallet
 [WALLET_ID] with the threshold-rebalance strategy (target_allocation 0.7,
 drift_threshold 0.05). Each tick should: fetch prices, check balances,
-evaluate the strategy, and execute any recommended swap. Report a summary
+evaluate the strategy, and execute any recommended swap (simulated on devnet). Report a summary
 table at the end showing each tick's price, signal, and action taken.
 ```
 
@@ -425,7 +426,7 @@ Summarise:
 | 9   | Create token mint     | `create_token_mint`                    | Agent-controlled mint authority           |
 | 10  | Mint tokens           | `mint_tokens`                          | SPL token supply issuance                 |
 | 11  | Transfer SPL tokens   | `send_token`                           | SPL transfer, ATA handling                |
-| 12  | Swap via Jupiter      | `swap_tokens`                          | DEX aggregation, best-route execution     |
+| 12  | Swap via Jupiter      | `swap_tokens`                          | DEX pricing, simulated on devnet          |
 | 13  | Global audit log      | `get_audit_logs`, `audit://logs`       | Tamper-evident cross-wallet trail         |
 | 14  | Per-wallet audit      | `audit://wallet-logs`                  | Scoped wallet history                     |
 | 15  | Probe x402            | `probe_x402`                           | Cost discovery without payment            |

@@ -46,7 +46,7 @@ You operate on **Solana devnet** by default. All wallets use AES-256-GCM encrypt
 | ------------------- | ------------------------------------ | ---------------------------------------------------- |
 | `create_token_mint` | Create new SPL token mint            | `wallet_id`, `decimals`                              |
 | `mint_tokens`       | Mint tokens (must be mint authority) | `wallet_id`, `mint`, `amount`, `to`                  |
-| `swap_tokens`       | Jupiter DEX swap                     | `wallet_id`, `input_token`, `output_token`, `amount` |
+| `swap_tokens`       | Jupiter DEX swap (simulated on devnet, live on mainnet) | `wallet_id`, `input_token`, `output_token`, `amount` |
 
 ### Payments
 
@@ -129,9 +129,11 @@ These scripts run directly in a shell — no MCP server needed. All output JSON.
 ```
 1. get_balance(wallet_id)               → check available tokens
 2. fetch_prices(tokens: "SOL,USDC")     → get current prices
-3. swap_tokens(wallet_id, "SOL", "USDC", 0.1)  → execute swap
+3. swap_tokens(wallet_id, "SOL", "USDC", 0.1)  → execute swap (simulated on devnet with real pricing)
 4. get_balance(wallet_id)               → verify result
 ```
+
+> **Note:** On devnet/testnet, `swap_tokens` returns a simulated result using real Jupiter mainnet pricing. Jupiter liquidity pools don't exist on devnet, so on-chain swap execution requires mainnet-beta. The simulation still shows the exact route, expected output, price impact, and slippage — everything except the on-chain settlement.
 
 ### Autonomous trading loop
 
@@ -139,7 +141,7 @@ These scripts run directly in a shell — no MCP server needed. All output JSON.
 1. fetch_prices(tokens: "SOL,USDC")     → get prices
 2. get_balance(wallet_id)               → get balances
 3. evaluate_strategy(strategy, wallet_id, sol_price, sol_bal, usdc_bal) → signal
-4. If BUY/SELL: swap_tokens(...)        → execute trade
+4. If BUY/SELL: swap_tokens(...)        → execute trade (simulated on devnet)
 5. get_balance(wallet_id)               → verify
 6. Repeat from step 1 after delay
 ```

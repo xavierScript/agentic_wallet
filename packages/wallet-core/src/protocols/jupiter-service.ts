@@ -13,7 +13,12 @@
  * Jupiter v6 API: https://station.jup.ag/docs/apis/swap-api
  */
 
-import { VersionedTransaction, PublicKey } from "@solana/web3.js";
+import {
+  VersionedTransaction,
+  Transaction,
+  PublicKey,
+  type Cluster,
+} from "@solana/web3.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +78,35 @@ export interface SwapResult {
   routeLabels: string[];
 }
 
+/**
+ * Result from a simulated (dry-run) swap.
+ * Contains a real Jupiter quote with pricing and route info,
+ * but no on-chain transaction is built or sent.
+ * Used on devnet/testnet where Jupiter liquidity pools don't exist.
+ */
+export interface SimulatedSwapResult {
+  /** Always true for simulated swaps */
+  simulated: true;
+  /** Explanation of why this was simulated */
+  reason: string;
+  /** The real Jupiter quote (pricing is real, execution is skipped) */
+  quote: JupiterQuote;
+  /** Input token info */
+  inputToken: { symbol: string; mint: string; decimals: number };
+  /** Output token info */
+  outputToken: { symbol: string; mint: string; decimals: number };
+  /** Human-readable input amount */
+  inputAmount: string;
+  /** Human-readable expected output amount (from real quote) */
+  expectedOutputAmount: string;
+  /** Human-readable minimum output after slippage */
+  minimumOutputAmount: string;
+  /** Price impact percentage */
+  priceImpactPct: string;
+  /** Route labels from the quote */
+  routeLabels: string[];
+}
+
 export interface JupiterTokenInfo {
   address: string;
   name: string;
@@ -101,6 +135,13 @@ export interface JupiterServiceConfig {
   maxSlippageBps: number;
   /** Maximum allowed price impact percentage (default: 5%) */
   maxPriceImpactPct: number;
+  /**
+   * Solana cluster.  When set to "devnet" or "testnet" the service
+   * requests legacy transactions from Jupiter (no Address Lookup Tables)
+   * to avoid the "address table account doesn't exist" simulation error
+   * caused by mainnet ALTs being absent on non-mainnet clusters.
+   */
+  cluster: Cluster;
 }
 
 // ── Well-known devnet token mints ────────────────────────────────────────────
@@ -164,7 +205,18 @@ export class JupiterService {
       defaultSlippageBps: config?.defaultSlippageBps ?? 50,
       maxSlippageBps: config?.maxSlippageBps ?? 300,
       maxPriceImpactPct: config?.maxPriceImpactPct ?? 5,
+      cluster: config?.cluster ?? "mainnet-beta",
     };
+  }
+
+  /** Whether the current cluster is NOT mainnet (devnet / testnet). */
+  private get isNonMainnet(): boolean {
+    return this.config.cluster !== "mainnet-beta";
+  }
+
+  /** Expose cluster so callers (swap tool) can branch on tx type. */
+  get cluster(): Cluster {
+    return this.config.cluster;
   }
 
   // ── Quote ────────────────────────────────────────────────────────────────
@@ -227,13 +279,19 @@ export class JupiterService {
   /**
    * Get a serialized swap transaction from Jupiter for a given quote.
    *
+   * On devnet / testnet the request includes `asLegacyTransaction: true`
+   * so Jupiter returns a legacy `Transaction` (no Address Lookup Tables).
+   * On mainnet the default versioned transaction with ALTs is used.
+   *
    * @param quote          - The quote object from getQuote()
    * @param userPublicKey  - The wallet that will sign and execute the swap
+   * @returns A `VersionedTransaction` on mainnet, or a legacy `Transaction`
+   *          on devnet/testnet.
    */
   async getSwapTransaction(
     quote: JupiterQuote,
     userPublicKey: string,
-  ): Promise<VersionedTransaction> {
+  ): Promise<VersionedTransaction | Transaction> {
     const url = `${this.config.apiBaseUrl}/swap`;
     const swapHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -241,22 +299,31 @@ export class JupiterService {
     if (this.config.apiKey) {
       swapHeaders["Authorization"] = `Bearer ${this.config.apiKey}`;
     }
+
+    // On non-mainnet clusters, request a legacy transaction to avoid the
+    // "address table account doesn't exist" error caused by mainnet ALTs.
+    const swapBody: Record<string, unknown> = {
+      quoteResponse: quote,
+      userPublicKey,
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: true,
+      prioritizationFeeLamports: {
+        priorityLevelWithMaxLamports: {
+          maxLamports: 1_000_000,
+          priorityLevel: "medium",
+        },
+      },
+    };
+
+    if (this.isNonMainnet) {
+      swapBody.asLegacyTransaction = true;
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: swapHeaders,
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        dynamicSlippage: true,
-        prioritizationFeeLamports: {
-          priorityLevelWithMaxLamports: {
-            maxLamports: 1_000_000,
-            priorityLevel: "medium",
-          },
-        },
-      }),
+      body: JSON.stringify(swapBody),
     });
 
     if (!response.ok) {
@@ -268,9 +335,19 @@ export class JupiterService {
 
     const data = (await response.json()) as { swapTransaction: string };
     const swapTransactionBuf = Buffer.from(data.swapTransaction, "base64");
-    const tx = VersionedTransaction.deserialize(swapTransactionBuf);
 
-    return tx;
+    // Legacy transactions are returned when asLegacyTransaction=true.
+    // Try versioned first; fall back to legacy deserialization.
+    if (this.isNonMainnet) {
+      try {
+        return Transaction.from(swapTransactionBuf);
+      } catch {
+        // Jupiter may still return versioned even when legacy was requested
+        // (e.g. when the route is too complex). Fall through.
+      }
+    }
+
+    return VersionedTransaction.deserialize(swapTransactionBuf);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -343,5 +420,73 @@ export class JupiterService {
     } catch {
       return false;
     }
+  }
+
+  // ── Simulated Swap (devnet/testnet) ──────────────────────────────────────
+
+  /**
+   * Simulate a swap using a real Jupiter quote but without building or
+   * sending an on-chain transaction.
+   *
+   * Jupiter quotes are based on **mainnet** liquidity regardless of the
+   * caller's cluster — the quote prices are real. However, the on-chain
+   * swap transaction cannot execute on devnet/testnet because the AMM pools,
+   * liquidity, and Address Lookup Tables don't exist there.
+   *
+   * This method fetches a real quote and returns the pricing/route details
+   * so the agent can demonstrate the full trading pipeline (fetch prices →
+   * evaluate strategy → simulate swap) on devnet without hitting an
+   * impossible on-chain execution.
+   */
+  async simulateSwap(
+    inputMint: string,
+    outputMint: string,
+    rawAmount: number | string,
+    slippageBps?: number,
+  ): Promise<SimulatedSwapResult> {
+    const quote = await this.getQuote(
+      inputMint,
+      outputMint,
+      rawAmount,
+      slippageBps,
+    );
+
+    const inputInfo = this.getTokenInfo(inputMint);
+    const outputInfo = this.getTokenInfo(outputMint);
+
+    const routeLabels = quote.routePlan
+      .map((r) => r.swapInfo.label || "Unknown")
+      .filter((label, i, arr) => arr.indexOf(label) === i);
+
+    return {
+      simulated: true,
+      reason:
+        `Jupiter swap transactions cannot execute on ${this.config.cluster} — ` +
+        `mainnet AMM pools and liquidity do not exist on this cluster. ` +
+        `This result contains a real Jupiter quote with accurate mainnet pricing. ` +
+        `To execute swaps on-chain, switch to mainnet-beta.`,
+      quote,
+      inputToken: {
+        symbol: inputInfo.symbol,
+        mint: inputMint,
+        decimals: inputInfo.decimals,
+      },
+      outputToken: {
+        symbol: outputInfo.symbol,
+        mint: outputMint,
+        decimals: outputInfo.decimals,
+      },
+      inputAmount: this.formatAmount(quote.inAmount, inputInfo.decimals),
+      expectedOutputAmount: this.formatAmount(
+        quote.outAmount,
+        outputInfo.decimals,
+      ),
+      minimumOutputAmount: this.formatAmount(
+        quote.otherAmountThreshold,
+        outputInfo.decimals,
+      ),
+      priceImpactPct: quote.priceImpactPct,
+      routeLabels,
+    };
   }
 }

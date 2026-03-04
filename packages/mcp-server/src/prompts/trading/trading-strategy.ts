@@ -63,6 +63,7 @@ export function registerTradingStrategyPrompt(
                   ? `   - Input: SOL, Output: ${token}, Amount: ${amount} SOL`
                   : `   - Input: ${token}, Output: SOL, Amount: ${amount} ${token}`,
                 `   - Use default slippage (0.5%)`,
+                `   - On devnet, this returns a simulated swap with real Jupiter pricing (on-chain execution requires mainnet-beta)`,
                 ``,
                 `## Post-Trade Verification`,
                 ``,

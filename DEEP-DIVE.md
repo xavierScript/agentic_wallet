@@ -314,7 +314,7 @@ Tool handler
           → fall through to standard path above
 ```
 
-### Versioned transactions (Jupiter swaps)
+### Versioned transactions (Jupiter swaps — mainnet only)
 
 ```
 Tool handler
@@ -331,6 +331,20 @@ Tool handler
       → PolicyEngine.recordTransaction(estimatedLamports)
   → return txSignature
 ```
+
+### Simulated swaps (Jupiter quotes — devnet / testnet)
+
+```
+Tool handler
+  → JupiterService.simulateSwap()
+      → JupiterService.getQuote()             [real mainnet pricing]
+      → validate priceImpactPct < maxPriceImpactPct
+      → format amounts + route labels
+  → return SimulatedSwapResult { simulated: true, quote, route, pricing }
+```
+
+No transaction is built. No on-chain execution. The agent receives accurate
+pricing and routing information it can use for strategy evaluation.
 
 ### Sweep-and-close (human-initiated only)
 
@@ -353,7 +367,18 @@ CLI confirms 'y' from human
 
 Jupiter is Solana's primary DEX aggregator — it routes swaps across Raydium, Orca, Meteora, and other liquidity sources to find the best price. The integration uses Jupiter's v6 REST API.
 
-### Flow
+### Devnet vs Mainnet
+
+Jupiter's **quote API** returns real pricing regardless of what cluster the caller is on — quotes reflect live mainnet liquidity. However, Jupiter's **swap transactions** reference mainnet AMM pools, Address Lookup Tables, and program accounts that do not exist on devnet or testnet.
+
+To handle this cleanly:
+
+- **On mainnet-beta:** `swap_tokens` fetches a quote, builds a `VersionedTransaction`, signs it via `WalletService` (policy-enforced), and sends it on-chain.
+- **On devnet / testnet:** `swap_tokens` fetches a **real Jupiter quote** (accurate mainnet pricing and routing) and returns a **simulated result**. No transaction is built or sent. The agent still sees the full pricing pipeline — route labels, price impact, expected output, slippage — it just doesn't execute on-chain.
+
+This means the full trading loop (`fetch_prices` → `evaluate_strategy` → `swap_tokens`) works end-to-end on devnet with real market data. The only thing missing is the on-chain settlement.
+
+### Flow (mainnet)
 
 1. **Quote** — `GET /quote?inputMint=...&outputMint=...&amount=...&slippageBps=...`  
    Returns best route, expected output, price impact, and route labels.
@@ -394,7 +419,7 @@ Instead of a standalone bot process, the trading capability is exposed as MCP to
 
 1. `fetch_prices` — calls Jupiter Price API v2, returns real-time USD prices for SOL, USDC, and any mint address
 2. `evaluate_strategy` — runs a named strategy (threshold-rebalance or sma-crossover) against current prices and balances, returns a BUY/SELL/HOLD signal with exact amounts
-3. `swap_tokens` — executes the trade if the signal is not HOLD (existing tool, policy-enforced)
+3. `swap_tokens` — executes the trade if the signal is not HOLD. On mainnet this is a real on-chain swap (policy-enforced). On devnet it returns a simulated swap with real mainnet pricing — the full trading loop still runs end-to-end.
 
 The `autonomous-trading` prompt ties these together: it instructs the agent to run a multi-tick loop of _fetch → evaluate → swap → log_. Each tick is a full MCP tool call sequence. The agent reports a summary table at the end.
 
@@ -425,7 +450,7 @@ The SMA strategy maintains per-wallet state across `evaluate_strategy` calls wit
 - Send SOL and SPL tokens (policy-checked)
   - With Kora configured: gasless — zero SOL spent on fees by the agent wallet
   - Without Kora or when Kora is unavailable: standard path, agent pays fees
-- Execute Jupiter swaps (policy-checked, slippage/impact bounded)
+- Execute Jupiter swaps (policy-checked, slippage/impact bounded on mainnet; simulated with real pricing on devnet)
 - Write on-chain memos (gasless-capable via Kora)
 - Create and mint SPL tokens
 - Pay for x402-protected HTTP resources using managed wallets

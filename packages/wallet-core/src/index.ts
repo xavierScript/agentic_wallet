@@ -26,6 +26,7 @@ export {
   JupiterService,
   type JupiterQuote,
   type SwapResult,
+  type SimulatedSwapResult,
   type JupiterTokenInfo,
   type JupiterServiceConfig,
   WELL_KNOWN_TOKENS,

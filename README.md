@@ -1,6 +1,8 @@
 # Solana Agentic Wallet
 
 > **Autonomous AI agents with secure Solana wallets** — encrypted key management, policy-enforced transaction signing, a full MCP server, and agent skill scripts any AI can use.
+>
+> To prove the wallet can interact autonomously with the ecosystem, we integrated **Kora** for gasless transactions, **x402** for HTTP micropayments, **Jupiter** for DEX pricing and swap routing, and **SPL tokens** for minting and transfers — all working end-to-end on devnet.
 
 [![Solana](https://img.shields.io/badge/Solana-Devnet-14F195?style=flat-square&logo=solana)](https://solana.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?style=flat-square&logo=typescript)](https://typescriptlang.org)
@@ -28,7 +30,7 @@
 | Create a wallet programmatically               |   ✅   | `create_wallet` MCP tool → `KeyManager` + AES-256-GCM encrypted keystore                 |
 | Sign transactions automatically                |   ✅   | `WalletService.signAndSend()` — zero human input required                                |
 | Hold SOL and SPL tokens                        |   ✅   | Every wallet is a full Solana keypair; balances via `get_balance`                        |
-| Interact with a test dApp / protocol           |   ✅   | Jupiter DEX swaps · x402 HTTP payments · Kora gasless relay · SPL token minting          |
+| Interact with a test dApp / protocol           |   ✅   | Kora gasless relay · x402 HTTP payments · Jupiter pricing & simulated swaps · SPL token minting |
 | Safe key management for autonomous agents      |   ✅   | AES-256-GCM + PBKDF2 (210 000 iterations, SHA-512) encrypted keystore                    |
 | Automated signing without manual input         |   ✅   | Policy-gated auto-signing; `close_wallet` is the only human-required operation           |
 | AI agent decision-making / simulation          |   ✅   | SMA-crossover + threshold-rebalance strategy engine; autonomous multi-tick trading loop  |
@@ -53,9 +55,9 @@ A **production-grade autonomous wallet system** for Solana AI agents — not a t
 
 **Protocol integrations**
 
-- **Jupiter DEX** — best-route swaps across all Solana liquidity (API v6, VersionedTransactions)
 - **Kora gasless relay** — agent wallets pay zero SOL network fees; the operator's Kora node covers them
 - **x402 HTTP payments** — agents autonomously pay for API-protected resources via Coinbase's payment standard
+- **Jupiter DEX** — real-time pricing via Jupiter Price API v2, best-route swap quotes, and full on-chain execution on mainnet-beta. On devnet the tool returns simulated swaps with real mainnet pricing (Jupiter liquidity pools don't exist on devnet)
 - **SPL tokens** — mint creation, ATA management, token transfers
 
 **Agent interfaces**
@@ -525,6 +527,33 @@ Agent: Let me check if this requires payment...
 ## Security Model
 
 See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
+
+```
+┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+│         KEY DERIVATION          │       │      ENCRYPTION (AES-GCM)       │
+├─────────────────────────────────┤       ├─────────────────────────────────┤
+│                                 │       │                                 │
+│  Passphrase       Random Salt   │       │   Plaintext Keypair    Random IV│
+│      │                 │        │       │           │                 │   │
+│      └───────┐ ┌───────┘        │       │           ▼                 ▼   │
+│              ▼ ▼                │       │     ┌─────────────────────┐     │
+│       ┌───────────────┐         │       │     │                     │     │
+│       │    PBKDF2     │         │   ┌───┼────▶│     AES-256-GCM     │     │
+│       │ (210k rounds, │         │   │   │     │                     │     │
+│       │  HMAC-SHA512) │         │   │   │     └──────────┬──────────┘     │
+│       └───────┬───────┘         │   │   │                │                │
+│               │                 │   │   │        ┌───────┴───────┐        │
+│               ▼                 │   │   │        ▼               ▼        │
+│          Derived Key ───────────┼───┘   │   Ciphertext        Auth Tag    │
+│          (32 Bytes)             │       │                     (16 Bytes)  │
+└─────────────────────────────────┘       └─────────────────────────────────┘
+                                                       │            │
+                                                       ▼            ▼
+                                             ┌────────────────────────────┐
+                                             │  Saved to keystore JSON    │
+                                             │  (Integrity protected!)    │
+                                             └────────────────────────────┘
+```
 
 | Concern           | Approach                                                                                                                |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |

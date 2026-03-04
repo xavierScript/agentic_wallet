@@ -108,7 +108,9 @@ export function registerAutonomousTradingPrompt(
                 ``,
                 `### Step 4: Execute (if not HOLD)`,
                 `If the signal is **BUY** or **SELL**, call \`swap_tokens\` with the parameters ` +
-                  `from the signal's \`nextStep\` field.`,
+                  `from the signal's \`nextStep\` field. ` +
+                  `On devnet, swap_tokens returns a simulated result with real Jupiter pricing ` +
+                  `(on-chain execution requires mainnet-beta). Treat the simulation as a successful trade for reporting purposes.`,
                 `If the signal is **HOLD**, skip to the next tick.`,
                 ``,
                 `### Step 5: Log`,

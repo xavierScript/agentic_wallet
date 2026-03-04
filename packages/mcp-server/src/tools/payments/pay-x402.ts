@@ -99,6 +99,14 @@ export function registerPayX402Tool(
           throw new Error(`Policy violation: ${violation}`);
         }
 
+        // Every Solana transaction needs a recent blockhash before it can be
+        // signed.  The x402 client builds the transaction without one (it has
+        // no RPC access), so we must hydrate it here before calling partialSign.
+        if (!tx.recentBlockhash) {
+          const { blockhash } = await services.connection.getLatestBlockhash();
+          tx.recentBlockhash = blockhash;
+        }
+
         tx.partialSign(keypair);
 
         // Record the transaction for rate limiting
