@@ -82,8 +82,19 @@ export interface JupiterTokenInfo {
 }
 
 export interface JupiterServiceConfig {
-  /** Jupiter API base URL (default: public endpoint) */
+  /**
+   * Jupiter API base URL.
+   * Free/public tier:  https://lite-api.jup.ag/swap/v1  (default)
+   * Paid tier:         https://api.jup.ag/swap/v1  (requires apiKey)
+   * Override via JUPITER_API_URL env var.
+   */
   apiBaseUrl: string;
+  /**
+   * Optional Jupiter API key for the paid tier.
+   * Sent as the `Authorization: Bearer <key>` header.
+   * Set via JUPITER_API_KEY env var.
+   */
+  apiKey?: string;
   /** Default slippage in basis points (default: 50 = 0.5%) */
   defaultSlippageBps: number;
   /** Maximum allowed slippage in basis points (default: 300 = 3%) */
@@ -143,7 +154,13 @@ export class JupiterService {
 
   constructor(config?: Partial<JupiterServiceConfig>) {
     this.config = {
-      apiBaseUrl: config?.apiBaseUrl || "https://api.jup.ag",
+      // The old https://api.jup.ag requires a paid API key (returns 401 without one).
+      // Use the free public lite endpoint by default; override with JUPITER_API_URL.
+      apiBaseUrl:
+        config?.apiBaseUrl ||
+        process.env.JUPITER_API_URL ||
+        "https://lite-api.jup.ag/swap/v1",
+      apiKey: config?.apiKey || process.env.JUPITER_API_KEY,
       defaultSlippageBps: config?.defaultSlippageBps ?? 50,
       maxSlippageBps: config?.maxSlippageBps ?? 300,
       maxPriceImpactPct: config?.maxPriceImpactPct ?? 5,
@@ -180,7 +197,11 @@ export class JupiterService {
     });
 
     const url = `${this.config.apiBaseUrl}/quote?${params.toString()}`;
-    const response = await fetch(url);
+    const headers: Record<string, string> = {};
+    if (this.config.apiKey) {
+      headers["Authorization"] = `Bearer ${this.config.apiKey}`;
+    }
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       const body = await response.text();
@@ -214,9 +235,15 @@ export class JupiterService {
     userPublicKey: string,
   ): Promise<VersionedTransaction> {
     const url = `${this.config.apiBaseUrl}/swap`;
+    const swapHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.config.apiKey) {
+      swapHeaders["Authorization"] = `Bearer ${this.config.apiKey}`;
+    }
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: swapHeaders,
       body: JSON.stringify({
         quoteResponse: quote,
         userPublicKey,
