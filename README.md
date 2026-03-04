@@ -9,6 +9,69 @@
 
 ---
 
+## Demo & Deep Dive
+
+|                                |                                       |
+| ------------------------------ | ------------------------------------- |
+| 📹 **Video Demo**              | [Watch on YouTube](#) _(link coming)_ |
+| 📝 **Written Deep Dive**       | [Read the article](#) _(link coming)_ |
+| 🔍 **Architecture & Security** | [DEEP-DIVE.md](DEEP-DIVE.md)          |
+| 🎮 **28 Copy-Paste Prompts**   | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)    |
+| 🤖 **Agent Skills Manual**     | [SKILLS.md](SKILLS.md)                |
+
+---
+
+## Bounty Requirements
+
+| Requirement                                    | Status | Where                                                                                    |
+| ---------------------------------------------- | :----: | ---------------------------------------------------------------------------------------- |
+| Create a wallet programmatically               |   ✅   | `create_wallet` MCP tool → `KeyManager` + AES-256-GCM encrypted keystore                 |
+| Sign transactions automatically                |   ✅   | `WalletService.signAndSend()` — zero human input required                                |
+| Hold SOL and SPL tokens                        |   ✅   | Every wallet is a full Solana keypair; balances via `get_balance`                        |
+| Interact with a test dApp / protocol           |   ✅   | Jupiter DEX swaps · x402 HTTP payments · Kora gasless relay · SPL token minting          |
+| Safe key management for autonomous agents      |   ✅   | AES-256-GCM + PBKDF2 (210 000 iterations, SHA-512) encrypted keystore                    |
+| Automated signing without manual input         |   ✅   | Policy-gated auto-signing; `close_wallet` is the only human-required operation           |
+| AI agent decision-making / simulation          |   ✅   | SMA-crossover + threshold-rebalance strategy engine; autonomous multi-tick trading loop  |
+| Clear separation of agent logic and wallet ops |   ✅   | `mcp-server` (agent interface) and `wallet-core` (signing/storage) are separate packages |
+| Open-source with clear README and setup        |   ✅   | This file · [DEEP-DIVE.md](DEEP-DIVE.md) · [DEMO-PROMPTS.md](DEMO-PROMPTS.md)            |
+| `SKILLS.md` for agents to read                 |   ✅   | [SKILLS.md](SKILLS.md) · [skills/SKILL.md](skills/SKILL.md)                              |
+| Working prototype on devnet                    |   ✅   | Docker one-liner **or** `pnpm install && pnpm build && pnpm cli`                         |
+| Support multiple independent agents            |   ✅   | Each wallet has its own isolated policy, keystore, and audit trail                       |
+
+---
+
+## What's Built
+
+A **production-grade autonomous wallet system** for Solana AI agents — not a toy prototype.
+
+**Core wallet**
+
+- Programmatic wallet creation with AES-256-GCM encrypted keystores (PBKDF2, 210k SHA-512 iterations)
+- Automatic transaction signing — SOL transfers, SPL token transfers, versioned transactions — no human in the loop
+- Policy engine: per-tx spend caps, daily caps, per-hour/day rate limits, program allowlists — all enforced before signing
+- Append-only JSONL audit trail — every operation logged regardless of success or failure
+
+**Protocol integrations**
+
+- **Jupiter DEX** — best-route swaps across all Solana liquidity (API v6, VersionedTransactions)
+- **Kora gasless relay** — agent wallets pay zero SOL network fees; the operator's Kora node covers them
+- **x402 HTTP payments** — agents autonomously pay for API-protected resources via Coinbase's payment standard
+- **SPL tokens** — mint creation, ATA management, token transfers
+
+**Agent interfaces**
+
+- **MCP server** with 16 tools, 9 resources, and 8 guided prompts — any MCP-compatible AI connects instantly
+- **5 bash scripts** in `skills/scripts/` — shell-access agents work without MCP at all
+- **SKILLS.md** — structured operating manual agents read before acting
+
+**Safety by design**
+
+- `close_wallet` cannot be called by any agent — a compile-time `HumanOnlyOpts` type guard prevents it entirely
+- Agents never see raw private keys — all signing is delegated through `WalletService`
+- Kora is optional — if the relay node is offline, `WalletService` falls back to the standard fee path automatically
+
+---
+
 ## What is this?
 
 A complete toolkit for running autonomous AI agents on Solana. Each agent gets its own AES-256-GCM encrypted wallet, operates within configurable safety guardrails (spend caps, rate limits, program allowlists), and every action is written to an immutable audit trail.
