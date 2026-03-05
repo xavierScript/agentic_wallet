@@ -465,6 +465,61 @@ When `MASTER_WALLET_KEY_LABEL` is set, `service-factory.ts` calls `KeyManager.un
 
 ---
 
+## Kora Gasless Relay
+
+By default, every Solana transaction requires the sender to hold SOL for network fees. For AI agents this is a friction point — every new agent wallet needs to be topped up before it can do anything. Kora removes this requirement entirely.
+
+When `KORA_RPC_URL` is set in `.env`, agent wallets pay **zero SOL in network fees**. The operator's Kora node signs as the fee payer on every transaction instead. Agents can be created and used immediately without a prior SOL funding step for gas.
+
+If the Kora node is offline or unreachable, `WalletService` automatically falls back to the standard fee path — the agent's own wallet covers fees as normal. No code changes needed.
+
+### Prerequisites
+
+Requires the [Kora CLI](https://launch.solana.com/docs/kora/operators) (`cargo install kora-cli`) and a funded signer keypair. Full setup guide: [kora/README.md](kora/README.md).
+
+### Setup (devnet)
+
+```bash
+# 1. Generate a dedicated fee-payer keypair
+solana-keygen new --outfile kora/kora-signer.json --no-bip39-passphrase
+
+# 2. Fund it with devnet SOL (~2 SOL covers ~400,000 transactions)
+solana airdrop 2 $(solana-keygen pubkey kora/kora-signer.json) --url devnet
+
+# 3. Add to .env
+KORA_RPC_URL=http://localhost:8080
+KORA_SIGNER_PRIVATE_KEY=kora/kora-signer.json   # or the raw base58 key
+
+# 4. Start the Kora node
+cd kora
+kora --config kora.toml --rpc-url https://api.devnet.solana.com rpc start --signers-config signers.toml
+```
+
+You should see `RPC server started on 0.0.0.0:8080`. The agentic wallet auto-detects `KORA_RPC_URL` on startup.
+
+### Which tools are covered
+
+| MCP Tool            | Transaction type    | Gasless via Kora                                              |
+| ------------------- | ------------------- | ------------------------------------------------------------- |
+| `send_sol`          | Legacy (System)     | ✅ Yes                                                        |
+| `send_token`        | Legacy (SPL Token)  | ✅ Yes                                                        |
+| `write_memo`        | Legacy (SPL Memo)   | ✅ Yes                                                        |
+| `create_token_mint` | Legacy (SPL Token)  | ✅ Yes                                                        |
+| `mint_tokens`       | Legacy (SPL Token)  | ✅ Yes                                                        |
+| `swap_tokens`       | Versioned (Jupiter) | ❌ No — Jupiter bakes the fee payer into the compiled message |
+| `pay_x402`          | x402 facilitator    | ❌ No — x402 facilitator broadcasts via a different path      |
+
+### How it works
+
+1. Agent calls a tool (e.g. `send_sol`)
+2. `WalletService` builds the transaction and sets the **Kora signer** as the fee payer
+3. The transaction is sent to the Kora node's RPC endpoint instead of directly to Solana
+4. Kora counter-signs as fee payer and broadcasts the transaction
+5. The audit log records the Kora fee payer address alongside the agent's signature
+6. If Kora returns an error or is unreachable, the call retries using the agent wallet as its own fee payer
+
+---
+
 ## x402 Payment Protocol
 
 One of the protocol integrations worth a closer look is x402 — an open standard where a server returns `402 Payment Required`, the client pays on-chain and retries, the server verifies the transaction, and the resource is returned. This wallet handles the full flow autonomously.
