@@ -1,6 +1,8 @@
 # Solana Agentic Wallet
 
 > **Autonomous AI agents with secure Solana wallets** — encrypted key management, policy-enforced transaction signing, a full MCP server, and agent skill scripts any AI can use.
+>
+> To prove the wallet can interact autonomously with the ecosystem, we integrated **Kora** for gasless transactions, **x402** for HTTP micropayments, **Jupiter** for DEX pricing and swap routing, and **SPL tokens** for minting and transfers — all working end-to-end on devnet.
 
 [![Solana](https://img.shields.io/badge/Solana-Devnet-14F195?style=flat-square&logo=solana)](https://solana.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?style=flat-square&logo=typescript)](https://typescriptlang.org)
