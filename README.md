@@ -1,8 +1,6 @@
 # Solana Agentic Wallet
 
 > **Autonomous AI agents with secure Solana wallets** — encrypted key management, policy-enforced transaction signing, a full MCP server, and agent skill scripts any AI can use.
->
-> To prove the wallet can interact autonomously with the ecosystem, we integrated **Kora** for gasless transactions, **x402** for HTTP micropayments, **Jupiter** for DEX pricing and swap routing, and **SPL tokens** for minting and transfers — all working end-to-end on devnet.
 
 [![Solana](https://img.shields.io/badge/Solana-Devnet-14F195?style=flat-square&logo=solana)](https://solana.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?style=flat-square&logo=typescript)](https://typescriptlang.org)
@@ -11,114 +9,70 @@
 
 ---
 
-## Demo & Deep Dive
+## Demo
 
 |                                |                                       |
 | ------------------------------ | ------------------------------------- |
-| 📹 **Video Demo**              | [Watch on YouTube](#) _(link coming)_ |
-| 📝 **Written Deep Dive**       | [Read the article](#) _(link coming)_ |
+| 📹 **Video Deep Dive**         | [Watch on YouTube](#) _(link coming)_ |
+| 📝 **Written Article**         | [Read the article](#) _(link coming)_ |
 | 🔍 **Architecture & Security** | [DEEP-DIVE.md](DEEP-DIVE.md)          |
 | 🎮 **28 Copy-Paste Prompts**   | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)    |
 | 🤖 **Agent Skills Manual**     | [SKILLS.md](SKILLS.md)                |
 
----
-
-## Bounty Requirements
-
-| Requirement                                    | Status | Where                                                                                    |
-| ---------------------------------------------- | :----: | ---------------------------------------------------------------------------------------- |
-| Create a wallet programmatically               |   ✅   | `create_wallet` MCP tool → `KeyManager` + AES-256-GCM encrypted keystore                 |
-| Sign transactions automatically                |   ✅   | `WalletService.signAndSend()` — zero human input required                                |
-| Hold SOL and SPL tokens                        |   ✅   | Every wallet is a full Solana keypair; balances via `get_balance`                        |
-| Interact with a test dApp / protocol           |   ✅   | Kora gasless relay · x402 HTTP payments · Jupiter pricing & simulated swaps · SPL token minting |
-| Safe key management for autonomous agents      |   ✅   | AES-256-GCM + PBKDF2 (210 000 iterations, SHA-512) encrypted keystore                    |
-| Automated signing without manual input         |   ✅   | Policy-gated auto-signing; `close_wallet` is the only human-required operation           |
-| AI agent decision-making / simulation          |   ✅   | SMA-crossover + threshold-rebalance strategy engine; autonomous multi-tick trading loop  |
-| Clear separation of agent logic and wallet ops |   ✅   | `mcp-server` (agent interface) and `wallet-core` (signing/storage) are separate packages |
-| Open-source with clear README and setup        |   ✅   | This file · [DEEP-DIVE.md](DEEP-DIVE.md) · [DEMO-PROMPTS.md](DEMO-PROMPTS.md)            |
-| `SKILLS.md` for agents to read                 |   ✅   | [SKILLS.md](SKILLS.md) · [skills/SKILL.md](skills/SKILL.md)                              |
-| Working prototype on devnet                    |   ✅   | Docker one-liner **or** `pnpm install && pnpm build && pnpm cli`                         |
-| Support multiple independent agents            |   ✅   | Each wallet has its own isolated policy, keystore, and audit trail                       |
-
----
-
-## What's Built
-
-A **production-grade autonomous wallet system** for Solana AI agents.
-
-**Core wallet**
-
-- Programmatic wallet creation with AES-256-GCM encrypted keystores (PBKDF2, 210k SHA-512 iterations)
-- Automatic transaction signing — SOL transfers, SPL token transfers, versioned transactions — no human in the loop
-- Policy engine: per-tx spend caps, daily caps, per-hour/day rate limits, program allowlists — all enforced before signing
-- Append-only JSONL audit trail — every operation logged regardless of success or failure
-
-**Protocol integrations**
-
-- **Kora gasless relay** — agent wallets pay zero SOL network fees; the operator's Kora node covers them
-- **x402 HTTP payments** — agents autonomously pay for API-protected resources via Coinbase's payment standard
-- **Jupiter DEX** — real-time pricing via Jupiter Price API v2, best-route swap quotes, and full on-chain execution on mainnet-beta. On devnet the tool returns simulated swaps with real mainnet pricing (Jupiter liquidity pools don't exist on devnet)
-- **SPL tokens** — mint creation, ATA management, token transfers
-
-**Agent interfaces**
-
-- **MCP server** with 16 tools, 9 resources, and 8 guided prompts — any MCP-compatible AI connects instantly
-- **5 bash scripts** in `skills/scripts/` — shell-access agents work without MCP at all
-- **SKILLS.md** — structured operating manual agents read before acting
-
-**Safety by design**
-
-- `close_wallet` cannot be called by any agent — a compile-time `HumanOnlyOpts` type guard prevents it entirely
-- Agents never see raw private keys — all signing is delegated through `WalletService`
-- Kora is optional — if the relay node is offline, `WalletService` falls back to the standard fee path automatically
+<table>
+  <tr>
+    <td><img src="images/screenshot-tui.png" alt="TUI — operator dashboard" /></td>
+    <td><img src="images/screenshot-agent.png" alt="AI agent creating a wallet via MCP" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>TUI — live wallet state and audit log</em></td>
+    <td align="center"><em>Claude Desktop connected via MCP</em></td>
+  </tr>
+  <tr>
+    <td><img src="images/screenshot-audit.png" alt="Append-only audit trail" /></td>
+    <td><img src="images/screenshot-policy.png" alt="Policy engine blocking an over-limit transfer" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Append-only audit trail</em></td>
+    <td align="center"><em>Policy engine blocking an over-limit transfer</em></td>
+  </tr>
+</table>
 
 ---
 
-## What is this?
+## What Is This?
 
-A complete toolkit for running autonomous AI agents on Solana. Each agent gets its own AES-256-GCM encrypted wallet, operates within configurable safety guardrails (spend caps, rate limits, program allowlists), and every action is written to an immutable audit trail.
+AI agents on Solana are becoming autonomous participants in the ecosystem — executing trades, paying for APIs, managing liquidity. But the wallets they're using were designed for humans. Humans confirm transactions visually; agents do not. Humans notice when something is wrong; agents loop. Humans have intent; agents follow instructions that can be injected.
 
-The primary agent interface is an **MCP server** — meaning any MCP-compatible AI (Claude Desktop, VS Code Copilot, Cursor, or any custom agent) can connect and immediately gain the ability to create wallets, sign transactions, execute Jupiter swaps, mint tokens, and more — without touching private keys directly.
+This project is a **complete autonomous wallet system built from scratch for AI agents** — capable of signing transactions, holding SOL and SPL tokens, interacting with live Solana protocols, and doing all of it safely within configurable guardrails.
 
-For agents with shell access (Claude Code, Cursor terminal, any CLI agent), **5 standalone bash scripts** in `skills/scripts/` provide balance checks, devnet airdrops, audit log summaries, and transaction lookups — no MCP client required.
+The primary agent interface is an **MCP server** — any MCP-compatible AI (Claude Desktop, VS Code Copilot, Cursor, or any custom agent) connects and immediately gains 16 tools, 9 resources, and 8 guided prompts. Agents create wallets, sign transactions, execute Jupiter swaps, and pay for x402-protected APIs — without ever touching a private key directly.
 
-A **TUI (terminal UI)** lets human operators observe all wallet state and audit logs in real time, and is the only place wallet closure can be initiated (a human-only operation by design).
+For agents with shell access, **5 standalone bash scripts** in `skills/scripts/` work without MCP at all. A human-operated **TUI** observes all wallet state in real time and is the only interface where wallet closure — an irreversible action — can be triggered.
+
+To prove end-to-end autonomy, the system integrates four live protocols on devnet: **Kora** for gasless transactions, **x402** for HTTP micropayments, **Jupiter** for DEX pricing and swap routing, and **SPL tokens** for minting and transfers.
+
+Concretely, here is what the system provides:
+
+**Core wallet** — Programmatic wallet creation with AES-256-GCM encrypted keystores (PBKDF2, 210k SHA-512 iterations). Automatic transaction signing — SOL transfers, SPL token transfers, versioned transactions — no human in the loop. A policy engine enforcing per-tx spend caps, daily caps, per-hour/day rate limits, and program allowlists before any transaction is signed. An append-only JSONL audit trail logging every operation regardless of success or failure.
+
+**Protocol integrations** — Kora gasless relay (agent wallets pay zero SOL network fees), x402 HTTP payments (agents autonomously pay for API-protected resources), Jupiter DEX (real-time pricing, best-route swap quotes, on-chain execution on mainnet-beta — simulated with real pricing on devnet), and SPL tokens (mint creation, ATA management, token transfers).
+
+**Agent interfaces** — An MCP server with 16 tools, 9 resources, and 8 guided prompts. Five bash scripts for shell-access agents. A structured `SKILLS.md` operating manual agents read before acting.
+
+**Safety by design** — `close_wallet` cannot be called by any agent (a compile-time `HumanOnlyOpts` type guard prevents it entirely). Agents never see raw private keys. Kora is optional — if the relay node is offline, the system falls back to the standard fee path automatically.
+
+The next section shows how these pieces fit together.
 
 ---
 
 ## Architecture
 
-```
-  AI Agent
-  Claude Desktop · VS Code Copilot · Cursor · Custom MCP Client
-        │ MCP (stdio)                              │ bash
-        ▼                                          ▼
-  ┌─────────────────────────────┐     ┌────────────────────────┐
-  │  MCP Server                 │     │  Bash Scripts (5)      │
-  │  16 Tools                   │     │  skills/scripts/       │
-  │  9 Resources                │     │  (read-only, no keys)  │
-  │  8 Prompts                  │     └────────────────────────┘
-  │  ✗ close_wallet (human only)│
-  └──────────────┬──────────────┘
-                 │
-        ▼
-  ┌─────────────────────────────────────────────────────────────┐
-  │  Wallet Core                                                │
-  │  KeyManager     — AES-256-GCM encrypted keystores on disk  │
-  │  WalletService  — sign & send (legacy + versioned txs)     │
-  │  PolicyEngine   — spend caps, rate limits, allowlists      │
-  │  AuditLogger    — append-only JSONL audit trail            │
-  │  Jupiter        — DEX quote + swap                         │
-  │  Kora           — optional gasless fee relay               │
-  │  x402Client     — HTTP micropayment protocol               │
-  └──────────────────────────────┬──────────────────────────────┘
-                                 │
-                                 ▼
-                    Solana (devnet / mainnet-beta)
+![Agentic Wallet Architecture](images/agentic-wallet-arch-diagram.png)
 
-  CLI / TUI — human operator
-  Dashboard · Wallet list · Logs · Close wallet (human-only)
-```
+> For a detailed walkthrough of every layer — key storage, policy engine, human-only guardrail, transaction pipeline, and threat model — see [DEEP-DIVE.md](DEEP-DIVE.md).
+
+With the architecture in mind, let's get the system running.
 
 ---
 
@@ -220,6 +174,8 @@ OWNER_ADDRESS=<your-solana-address>
 # When set, agent wallets never pay SOL network fees — the Kora node covers them
 # Without this the system works normally: agent wallet pays its own fees
 KORA_RPC_URL=http://localhost:8080
+KORA_API_KEY=                                    # API key for authenticated Kora nodes
+KORA_SIGNER_PRIVATE_KEY=                         # Path to kora/kora-signer.json or raw base58 — required when running a local Kora node
 
 # Optional — auto-fund newly created agent wallets from a master wallet
 # See "Secure Key Storage" section below — use `pnpm key:import` instead of
@@ -238,9 +194,11 @@ pnpm cli
 
 The TUI shows live wallet balances, recent audit log entries, and lets you close wallets safely (human-only operation).
 
+Once the system is running, the next step is connecting an AI agent.
+
 ---
 
-## Connecting an AI Agent (MCP)
+## Connecting an AI Agent
 
 The MCP server speaks the [Model Context Protocol](https://modelcontextprotocol.io) over stdio. Build it once, then point any compatible client at it.
 
@@ -265,22 +223,6 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 
 Restart Claude Desktop. The wallet tools will appear in the tool list.
 
-### VS Code (GitHub Copilot / MCP extension)
-
-Add `.vscode/mcp.json` to your workspace:
-
-```json
-{
-  "servers": {
-    "agentic-wallet": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["${workspaceFolder}/packages/mcp-server/dist/index.js"]
-    }
-  }
-}
-```
-
 ### Cursor / other MCP clients
 
 Use the same `command` + `args` pattern above. The server communicates over stdin/stdout and requires no network port.
@@ -297,37 +239,7 @@ The agent will call the `wallet://system/status` resource and respond with live 
 
 For 28 copy-paste prompts covering every capability — from wallet creation and gasless transfers through autonomous multi-tick trading — see **[DEMO-PROMPTS.md](DEMO-PROMPTS.md)**.
 
----
-
-## Agent Skills
-
-**[SKILLS.md](SKILLS.md)** is the agent operating manual — read it first before any wallet operation.
-
-It covers what the agent can and cannot do, safety rules, common workflows, and the executable script interface. Point any agent at it:
-
-> "Read SKILLS.md and then create a wallet."
-
-### Bash Scripts — No MCP Required
-
-Agents with shell access can use the standalone scripts in `skills/scripts/` without the MCP server:
-
-| Script             | Purpose                             |
-| ------------------ | ----------------------------------- |
-| `airdrop.sh`       | Request devnet SOL for a wallet     |
-| `check-balance.sh` | Quick SOL balance via RPC           |
-| `audit-summary.sh` | Summarize today's audit log entries |
-| `tx-lookup.sh`     | Transaction details by signature    |
-| `health-check.sh`  | Scan all wallets for issues         |
-
-All scripts output JSON. Requirements: `bash`, `curl`, `bc`. On Windows use WSL or Git Bash.
-
-```bash
-bash skills/scripts/health-check.sh
-bash skills/scripts/check-balance.sh <wallet-public-key>
-bash skills/scripts/airdrop.sh <wallet-public-key> 1
-```
-
-See [skills/SKILL.md](skills/SKILL.md) for full docs, response formats, and agent trigger phrases.
+Now that an agent is connected, here is the full surface area it has access to.
 
 ---
 
@@ -385,6 +297,36 @@ See [skills/SKILL.md](skills/SKILL.md) for full docs, response formats, and agen
 
 ---
 
+## Agent Skills — Bash Scripts (No MCP Required)
+
+Not every agent speaks MCP. For agents with shell access (Claude Code, Cursor terminal, any CLI agent), five standalone bash scripts in `skills/scripts/` provide core wallet operations without the MCP server.
+
+**[SKILLS.md](SKILLS.md)** is the agent operating manual — it covers what the agent can and cannot do, safety rules, common workflows, and the script interface. Point any agent at it:
+
+> "Read SKILLS.md and then create a wallet."
+
+| Script             | Purpose                             |
+| ------------------ | ----------------------------------- |
+| `airdrop.sh`       | Request devnet SOL for a wallet     |
+| `check-balance.sh` | Quick SOL balance via RPC           |
+| `audit-summary.sh` | Summarize today's audit log entries |
+| `tx-lookup.sh`     | Transaction details by signature    |
+| `health-check.sh`  | Scan all wallets for issues         |
+
+All scripts output JSON. Requirements: `bash`, `curl`, `bc`. On Windows use WSL or Git Bash.
+
+```bash
+bash skills/scripts/health-check.sh
+bash skills/scripts/check-balance.sh <wallet-public-key>
+bash skills/scripts/airdrop.sh <wallet-public-key> 1
+```
+
+See [skills/SKILL.md](skills/SKILL.md) for full docs, response formats, and agent trigger phrases.
+
+Whether agents connect via MCP or bash, human operators can observe everything through the CLI.
+
+---
+
 ## CLI Usage
 
 The TUI is the human operator view — use it to monitor agent activity and manage wallet lifecycle.
@@ -409,6 +351,171 @@ pnpm cli send token <walletId> <recipient> <mint> 10 6
 pnpm cli status
 pnpm cli logs
 pnpm cli logs --wallet <walletId>
+```
+
+All agent actions — MCP, bash, or CLI — pass through the same security layer described next.
+
+---
+
+## Security Model
+
+See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
+
+```
+┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+│         KEY DERIVATION          │       │      ENCRYPTION (AES-GCM)       │
+├─────────────────────────────────┤       ├─────────────────────────────────┤
+│                                 │       │                                 │
+│  Passphrase       Random Salt   │       │   Plaintext Keypair    Random IV│
+│      │                 │        │       │           │                 │   │
+│      └───────┐ ┌───────┘        │       │           ▼                 ▼   │
+│              ▼ ▼                │       │     ┌─────────────────────┐     │
+│       ┌───────────────┐         │       │     │                     │     │
+│       │    PBKDF2     │         │   ┌───┼────▶│     AES-256-GCM     │     │
+│       │ (210k rounds, │         │   │   │     │                     │     │
+│       │  HMAC-SHA512) │         │   │   │     └──────────┬──────────┘     │
+│       └───────┬───────┘         │   │   │                │                │
+│               │                 │   │   │        ┌───────┴───────┐        │
+│               ▼                 │   │   │        ▼               ▼        │
+│          Derived Key ───────────┼───┘   │   Ciphertext        Auth Tag    │
+│          (32 Bytes)             │       │                     (16 Bytes)  │
+└─────────────────────────────────┘       └─────────────────────────────────┘
+                                                       │            │
+                                                       ▼            ▼
+                                             ┌────────────────────────────┐
+                                             │  Saved to keystore JSON    │
+                                             │  (Integrity protected!)    │
+                                             └────────────────────────────┘
+```
+
+| Concern           | Approach                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Key storage       | AES-256-GCM, PBKDF2 (210,000 iterations, SHA-512), random salt/IV per key                                               |
+| Key in memory     | Unlocked only during signing, never written to disk in plaintext                                                        |
+| Spend limits      | Per-tx cap, daily cap, enforced before signing in `PolicyEngine`                                                        |
+| Rate limits       | Per-hour and per-day tx counts, configurable cooldown between txs                                                       |
+| Program allowlist | Optionally restrict which on-chain programs a wallet may call                                                           |
+| Audit trail       | Append-only JSONL, every operation logged regardless of success/failure                                                 |
+| Human-only ops    | `closeWallet` requires `HumanOnlyOpts` — a compile-time type guard that prevents any MCP tool or script from calling it |
+| Gasless relay     | Kora optional — if node is down, `WalletService` falls back to standard path automatically                              |
+| MCP agents        | No tool exposes raw keypairs or passphrase; agents operate through policy-checked `WalletService` only                  |
+| Bash scripts      | Read-only (balance, logs, tx lookup); `airdrop.sh` only requests devnet SOL — no signing, no key access                 |
+
+The security model above mentions that raw keys should never live on disk. Here is how to achieve that.
+
+---
+
+## Secure Key Storage
+
+Raw Solana base58 private keys should **not** live in `.env` on disk. This project ships a one-time import script that encrypts your operator keys into the same AES-256-GCM keystore used for all agent wallets — so the raw secret is never written to disk.
+
+### Why bother?
+
+| Storage method                         | Raw key on disk? | Encrypted at rest?     | Recommended   |
+| -------------------------------------- | ---------------- | ---------------------- | ------------- |
+| `MASTER_WALLET_SECRET_KEY=…` in `.env` | ✓ plaintext      | ✗                      | dev/test only |
+| `pnpm key:import` → encrypted keystore | ✗                | ✓ AES-256-GCM + PBKDF2 | ✓             |
+
+The keystore encryption uses `WALLET_PASSPHRASE`, which **is** fine to keep in `.env` because it is a passphrase, not a private key.
+
+### One-time import
+
+```bash
+# 1. Add your raw key temporarily to .env
+MASTER_WALLET_SECRET_KEY=<your-base58-key>
+
+# 2. Run the import script (builds wallet-core first, then imports)
+pnpm key:import
+
+# 3. Follow the printed instructions:
+#    - Remove MASTER_WALLET_SECRET_KEY from .env
+#    - Add:  MASTER_WALLET_KEY_LABEL=master-funder
+#    - Clear your shell history
+```
+
+Sample output:
+
+```
+Agentic Wallet — System Key Import
+
+1. Master Funder Wallet (MASTER_WALLET_SECRET_KEY)
+✔  Encrypted and stored as "master-funder"
+   Keystore ID : 4a7f1c3e-…
+   Public key  : 55czFRi1…
+   Stored at   : ~/.agentic-wallet/keys/4a7f1c3e-….json
+
+Done
+✔  1 key(s) imported into the encrypted keystore.
+
+Next steps — update your .env:
+  # Remove this line:
+  MASTER_WALLET_SECRET_KEY=<your-raw-key>
+
+  # Add this line instead:
+  MASTER_WALLET_KEY_LABEL=master-funder
+```
+
+### How it works at runtime
+
+When `MASTER_WALLET_KEY_LABEL` is set, `service-factory.ts` calls `KeyManager.unlockByLabel(label)` at startup — the key is decrypted in memory using `WALLET_PASSPHRASE` and immediately used to construct the `MasterFunder` instance. The raw secret never touches disk or logs.
+
+`MASTER_WALLET_SECRET_KEY` remains supported as a fallback (for CI, Docker secrets, or existing setups), but `MASTER_WALLET_KEY_LABEL` takes precedence when both are present.
+
+---
+
+## x402 Payment Protocol
+
+One of the protocol integrations worth a closer look is x402 — an open standard where a server returns `402 Payment Required`, the client pays on-chain and retries, the server verifies the transaction, and the resource is returned. This wallet handles the full flow autonomously.
+
+> **Note:** `https://x402.org/protected` is Coinbase's Base/EVM reference server — it is **not** compatible with Solana transactions. For a Solana-native x402 demo you need a local server (see setup below).
+
+### Prerequisite — run a local Solana x402 server
+
+```bash
+git clone https://github.com/Woody4618/x402-solana-examples
+cd x402-solana-examples && npm install
+# Fund ./pay-in-usdc/client.json with devnet USDC
+# (mint: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU — use https://faucet.circle.com/)
+npm run usdc:server   # Terminal 1 — starts on http://localhost:3001
+```
+
+The wallet being used to pay must also hold devnet USDC at that mint.
+
+### How it works
+
+1. Agent calls `pay_x402` with a URL and wallet ID
+2. The tool makes an HTTP `GET` request to the URL
+3. If the server responds `402 Payment Required`, the tool:
+   - Parses the `X-PAYMENT-REQUIRED` header **or** the JSON response body (native servers embed payment info in the body)
+   - Selects a compatible Solana (`solana-devnet` / `solana-mainnet` / CAIP-2) payment option
+   - Checks whether the recipient Associated Token Account exists; creates it if not
+   - Builds a plain SPL `Transfer` instruction (opcode 3) — what native servers validate
+   - Signs via `WalletService` (policy checks enforced)
+   - Retries the request with the `X-Payment` header (base64-encoded JSON payload containing `serializedTransaction`)
+4. The server verifies and submits the transaction on-chain
+5. The resource content is returned to the agent
+
+### Safety
+
+- Payments go through the **PolicyEngine** — spend caps, rate limits, and cooldowns all apply
+- A configurable **max payment amount** (default: 1 SOL) prevents overspending
+- Every payment is logged to the **audit trail** (`x402:payment_signed`, `x402:payment_success`, etc.)
+- The agent never handles raw private keys — signing is delegated to `WalletService`
+
+### Example agent conversation
+
+```
+User: "Access the premium content at http://localhost:3001/premium"
+
+Agent: Let me check if this requires payment...
+       [calls probe_x402(url: "http://localhost:3001/premium")]
+
+       This URL requires a payment of 0.0001 USDC via x402 on solana-devnet.
+       I'll use wallet abc-123.
+       [calls pay_x402(wallet_id: "abc-123", url: "http://localhost:3001/premium")]
+
+       Here's the premium content: { data: "Premium content - USDC payment verified!" }
+       Payment settled. Explorer: https://explorer.solana.com/tx/5vGk...?cluster=devnet
 ```
 
 ---
@@ -475,116 +582,6 @@ agentic-wallet/
 
 ---
 
-## x402 Payment Protocol Integration
-
-The wallet integrates the x402 HTTP payment protocol for Solana — an open standard where a server returns `402 Payment Required`, the client pays on-chain and retries, the server verifies the transaction, and the resource is returned.
-
-> **Note:** `https://x402.org/protected` is Coinbase's Base/EVM reference server — it is **not** compatible with Solana transactions. For a Solana-native x402 demo you need a local server (see setup below).
-
-### Prerequisite — run a local Solana x402 server
-
-```bash
-git clone https://github.com/Woody4618/x402-solana-examples
-cd x402-solana-examples && npm install
-# Fund ./pay-in-usdc/client.json with devnet USDC
-# (mint: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU — use https://faucet.circle.com/)
-npm run usdc:server   # Terminal 1 — starts on http://localhost:3001
-```
-
-The wallet being used to pay must also hold devnet USDC at that mint.
-
-### How it works
-
-1. Agent calls `pay_x402` with a URL and wallet ID
-2. The tool makes an HTTP `GET` request to the URL
-3. If the server responds `402 Payment Required`, the tool:
-   - Parses the `X-PAYMENT-REQUIRED` header **or** the JSON response body (native servers embed payment info in the body)
-   - Selects a compatible Solana (`solana-devnet` / `solana-mainnet` / CAIP-2) payment option
-   - Checks whether the recipient Associated Token Account exists; creates it if not
-   - Builds a plain SPL `Transfer` instruction (opcode 3) — what native servers validate
-   - Signs via `WalletService` (policy checks enforced)
-   - Retries the request with the `X-Payment` header (base64-encoded JSON payload containing `serializedTransaction`)
-4. The server verifies and submits the transaction on-chain
-5. The resource content is returned to the agent
-
-### Agent-callable tools
-
-| Tool         | Description                                          |
-| ------------ | ---------------------------------------------------- |
-| `pay_x402`   | Pay for and retrieve an x402-protected HTTP resource |
-| `probe_x402` | Check if a URL requires payment and discover pricing |
-
-### Safety
-
-- Payments go through the **PolicyEngine** — spend caps, rate limits, and cooldowns all apply
-- A configurable **max payment amount** (default: 1 SOL) prevents overspending
-- Every payment is logged to the **audit trail** (`x402:payment_signed`, `x402:payment_success`, etc.)
-- The agent never handles raw private keys — signing is delegated to `WalletService`
-
-### Example agent conversation
-
-```
-User: "Access the premium content at http://localhost:3001/premium"
-
-Agent: Let me check if this requires payment...
-       [calls probe_x402(url: "http://localhost:3001/premium")]
-
-       This URL requires a payment of 0.0001 USDC via x402 on solana-devnet.
-       I'll use wallet abc-123.
-       [calls pay_x402(wallet_id: "abc-123", url: "http://localhost:3001/premium")]
-
-       Here's the premium content: { data: "Premium content - USDC payment verified!" }
-       Payment settled. Explorer: https://explorer.solana.com/tx/5vGk...?cluster=devnet
-```
-
----
-
-## Security Model
-
-See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
-
-```
-┌─────────────────────────────────┐       ┌─────────────────────────────────┐
-│         KEY DERIVATION          │       │      ENCRYPTION (AES-GCM)       │
-├─────────────────────────────────┤       ├─────────────────────────────────┤
-│                                 │       │                                 │
-│  Passphrase       Random Salt   │       │   Plaintext Keypair    Random IV│
-│      │                 │        │       │           │                 │   │
-│      └───────┐ ┌───────┘        │       │           ▼                 ▼   │
-│              ▼ ▼                │       │     ┌─────────────────────┐     │
-│       ┌───────────────┐         │       │     │                     │     │
-│       │    PBKDF2     │         │   ┌───┼────▶│     AES-256-GCM     │     │
-│       │ (210k rounds, │         │   │   │     │                     │     │
-│       │  HMAC-SHA512) │         │   │   │     └──────────┬──────────┘     │
-│       └───────┬───────┘         │   │   │                │                │
-│               │                 │   │   │        ┌───────┴───────┐        │
-│               ▼                 │   │   │        ▼               ▼        │
-│          Derived Key ───────────┼───┘   │   Ciphertext        Auth Tag    │
-│          (32 Bytes)             │       │                     (16 Bytes)  │
-└─────────────────────────────────┘       └─────────────────────────────────┘
-                                                       │            │
-                                                       ▼            ▼
-                                             ┌────────────────────────────┐
-                                             │  Saved to keystore JSON    │
-                                             │  (Integrity protected!)    │
-                                             └────────────────────────────┘
-```
-
-| Concern           | Approach                                                                                                                |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Key storage       | AES-256-GCM, PBKDF2 (210,000 iterations, SHA-512), random salt/IV per key                                               |
-| Key in memory     | Unlocked only during signing, never written to disk in plaintext                                                        |
-| Spend limits      | Per-tx cap, daily cap, enforced before signing in `PolicyEngine`                                                        |
-| Rate limits       | Per-hour and per-day tx counts, configurable cooldown between txs                                                       |
-| Program allowlist | Optionally restrict which on-chain programs a wallet may call                                                           |
-| Audit trail       | Append-only JSONL, every operation logged regardless of success/failure                                                 |
-| Human-only ops    | `closeWallet` requires `HumanOnlyOpts` — a compile-time type guard that prevents any MCP tool or script from calling it |
-| Gasless relay     | Kora optional — if node is down, `WalletService` falls back to standard path automatically                              |
-| MCP agents        | No tool exposes raw keypairs or passphrase; agents operate through policy-checked `WalletService` only                  |
-| Bash scripts      | Read-only (balance, logs, tx lookup); `airdrop.sh` only requests devnet SOL — no signing, no key access                 |
-
----
-
 ## Environment Variables
 
 | Variable                   | Default                         | Description                                                                                               |
@@ -603,61 +600,22 @@ See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
 
 ---
 
-## Secure Key Storage
+## Bounty Requirements
 
-Raw Solana base58 private keys should **not** live in `.env` on disk. This project ships a one-time import script that encrypts your operator keys into the same AES-256-GCM keystore used for all agent wallets — so the raw secret is never written to disk.
-
-### Why bother?
-
-| Storage method                         | Raw key on disk? | Encrypted at rest?     | Recommended   |
-| -------------------------------------- | ---------------- | ---------------------- | ------------- |
-| `MASTER_WALLET_SECRET_KEY=…` in `.env` | ✓ plaintext      | ✗                      | dev/test only |
-| `pnpm key:import` → encrypted keystore | ✗                | ✓ AES-256-GCM + PBKDF2 | ✓             |
-
-The keystore encryption uses `WALLET_PASSPHRASE`, which **is** fine to keep in `.env` because it is a passphrase, not a private key.
-
-### One-time import
-
-```bash
-# 1. Add your raw key temporarily to .env
-MASTER_WALLET_SECRET_KEY=<your-base58-key>
-
-# 2. Run the import script (builds wallet-core first, then imports)
-pnpm key:import
-
-# 3. Follow the printed instructions:
-#    - Remove MASTER_WALLET_SECRET_KEY from .env
-#    - Add:  MASTER_WALLET_KEY_LABEL=master-funder
-#    - Clear your shell history
-```
-
-Sample output:
-
-```
-Agentic Wallet — System Key Import
-
-1. Master Funder Wallet (MASTER_WALLET_SECRET_KEY)
-✔  Encrypted and stored as "master-funder"
-   Keystore ID : 4a7f1c3e-…
-   Public key  : 55czFRi1…
-   Stored at   : ~/.agentic-wallet/keys/4a7f1c3e-….json
-
-Done
-✔  1 key(s) imported into the encrypted keystore.
-
-Next steps — update your .env:
-  # Remove this line:
-  MASTER_WALLET_SECRET_KEY=<your-raw-key>
-
-  # Add this line instead:
-  MASTER_WALLET_KEY_LABEL=master-funder
-```
-
-### How it works at runtime
-
-When `MASTER_WALLET_KEY_LABEL` is set, `service-factory.ts` calls `KeyManager.unlockByLabel(label)` at startup — the key is decrypted in memory using `WALLET_PASSPHRASE` and immediately used to construct the `MasterFunder` instance. The raw secret never touches disk or logs.
-
-`MASTER_WALLET_SECRET_KEY` remains supported as a fallback (for CI, Docker secrets, or existing setups), but `MASTER_WALLET_KEY_LABEL` takes precedence when both are present.
+| Requirement                                    | Status | Where                                                                                           |
+| ---------------------------------------------- | :----: | ----------------------------------------------------------------------------------------------- |
+| Create a wallet programmatically               |   ✅   | `create_wallet` MCP tool → `KeyManager` + AES-256-GCM encrypted keystore                        |
+| Sign transactions automatically                |   ✅   | `WalletService.signAndSend()` — zero human input required                                       |
+| Hold SOL and SPL tokens                        |   ✅   | Every wallet is a full Solana keypair; balances via `get_balance`                               |
+| Interact with a test dApp / protocol           |   ✅   | Kora gasless relay · x402 HTTP payments · Jupiter pricing & simulated swaps · SPL token minting |
+| Safe key management for autonomous agents      |   ✅   | AES-256-GCM + PBKDF2 (210 000 iterations, SHA-512) encrypted keystore                           |
+| Automated signing without manual input         |   ✅   | Policy-gated auto-signing; `close_wallet` is the only human-required operation                  |
+| AI agent decision-making / simulation          |   ✅   | SMA-crossover + threshold-rebalance strategy engine; autonomous multi-tick trading loop         |
+| Clear separation of agent logic and wallet ops |   ✅   | `mcp-server` (agent interface) and `wallet-core` (signing/storage) are separate packages        |
+| Open-source with clear README and setup        |   ✅   | This file · [DEEP-DIVE.md](DEEP-DIVE.md) · [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                   |
+| `SKILLS.md` for agents to read                 |   ✅   | [SKILLS.md](SKILLS.md) · [skills/SKILL.md](skills/SKILL.md)                                     |
+| Working prototype on devnet                    |   ✅   | Docker one-liner **or** `pnpm install && pnpm build && pnpm cli`                                |
+| Support multiple independent agents            |   ✅   | Each wallet has its own isolated policy, keystore, and audit trail                              |
 
 ---
 
