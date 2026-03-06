@@ -686,3 +686,7 @@ make mcp        # build + run MCP server directly (for testing)
 ## License
 
 MIT
+
+---
+
+Built with ❤️ by xavierScript for the SuperteamNG bounty.
