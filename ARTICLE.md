@@ -338,5 +338,4 @@ Connect any MCP-compatible AI (Claude Desktop, VS Code Copilot, Cursor) and tell
 ---
 
 _Full source: [github.com/xavierScript/agentic_wallet](https://github.com/xavierScript/agentic_wallet)_
-_Architecture deep dive: [DEEP-DIVE.md](https://github.com/xavierScript/agentic_wallet/blob/main/DEEP-DIVE.md)_
 _28 demo prompts: [DEMO-PROMPTS.md](https://github.com/xavierScript/agentic_wallet/blob/main/DEMO-PROMPTS.md)_

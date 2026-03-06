@@ -13,13 +13,12 @@
 
 ## Demo
 
-|                                |                                                                                              |
-| ------------------------------ | -------------------------------------------------------------------------------------------- |
-| 📹 **Video Deep Dive**         | [Watch on YouTube](https://www.youtube.com/playlist?list=PL0SN_TTIhgAUG_kiUNZd4crZruk12ZTUk) |
-| 📝 **Written Article**         | [Read the article](#) _(link coming)_                                                        |
-| 🔍 **Architecture & Security** | [DEEP-DIVE.md](DEEP-DIVE.md)                                                                 |
-| 🎮 **28 Copy-Paste Prompts**   | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                           |
-| 🤖 **Agent Skills Manual**     | [SKILLS.md](SKILLS.md)                                                                       |
+|                                   |                                                                                              |
+| --------------------------------- | -------------------------------------------------------------------------------------------- |
+| 📹 **Video Deep Dive**            | [Watch on YouTube](https://www.youtube.com/playlist?list=PL0SN_TTIhgAUG_kiUNZd4crZruk12ZTUk) |
+| 📝 **Wallet Design and Security** | [ARTICLE.md](ARTICLE.md)\_                                                                   |
+| 🎮 **28 Copy-Paste Prompts**      | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                           |
+| 🤖 **Agent Skills Manual**        | [SKILLS.md](SKILLS.md)                                                                       |
 
 <table>
   <tr>
@@ -71,8 +70,6 @@ The next section shows how these pieces fit together.
 ## Architecture
 
 ![Agentic Wallet Architecture](images/agentic-wallet-arch-diagram.png)
-
-> For a detailed walkthrough of every layer — key storage, policy engine, human-only guardrail, transaction pipeline, and threat model — see [DEEP-DIVE.md](DEEP-DIVE.md).
 
 With the architecture in mind, let's get the system running.
 
@@ -361,7 +358,7 @@ All agent actions — MCP, bash, or CLI — pass through the same security layer
 
 ## Security Model
 
-See [DEEP-DIVE.md](DEEP-DIVE.md) for the full explanation. Summary:
+Summary:
 
 ```
 ┌─────────────────────────────────┐       ┌─────────────────────────────────┐
@@ -630,7 +627,6 @@ agentic-wallet/
 │   ├── signers.toml                    # Kora signer keypair config
 │   └── README.md                       # Kora setup guide & troubleshooting
 │
-├── DEEP-DIVE.md                   # Architecture + security deep dive
 ├── DEMO-PROMPTS.md                # 28 copy-paste demo prompts
 ├── SKILLS.md                      # Top-level agent skills index
 ├── Makefile                       # Build, dev, test, run shortcuts
@@ -669,7 +665,7 @@ agentic-wallet/
 | Automated signing without manual input         |   ✅   | Policy-gated auto-signing; `close_wallet` is the only human-required operation                  |
 | AI agent decision-making / simulation          |   ✅   | SMA-crossover + threshold-rebalance strategy engine; autonomous multi-tick trading loop         |
 | Clear separation of agent logic and wallet ops |   ✅   | `mcp-server` (agent interface) and `wallet-core` (signing/storage) are separate packages        |
-| Open-source with clear README and setup        |   ✅   | This file · [DEEP-DIVE.md](DEEP-DIVE.md) · [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                   |
+| Open-source with clear README and setup        |   ✅   | This file · [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                  |
 | `SKILLS.md` for agents to read                 |   ✅   | [SKILLS.md](SKILLS.md) · [skills/SKILL.md](skills/SKILL.md)                                     |
 | Working prototype on devnet                    |   ✅   | Docker one-liner **or** `pnpm install && pnpm build && pnpm cli`                                |
 | Support multiple independent agents            |   ✅   | Each wallet has its own isolated policy, keystore, and audit trail                              |
