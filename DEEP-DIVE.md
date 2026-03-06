@@ -1,6 +1,8 @@
 # Agentic Wallet — Architecture & Security Deep Dive
 
-This document covers the design decisions, security model, and technical architecture behind the Solana Agentic Wallet. It is intended for bounty reviewers, auditors, and developers who want to understand _why_ the system is built the way it is.
+This document covers the design decisions, security model, and technical architecture behind the Solana Agentic Wallet.
+
+The document is structured in three parts. **Sections 1–6** cover the foundation: the problem space, the MCP architecture choice, and the four security layers (key storage, policy engine, human-only guardrails, and audit trail). **Sections 7–11** cover what the system does: the transaction pipeline and each protocol integration (Jupiter, Kora, x402, and autonomous trading). **Sections 12–14** cover system-level properties: multi-agent isolation, the full capability surface, and the threat model that ties everything together.
 
 ---
 
@@ -14,12 +16,12 @@ This document covers the design decisions, security model, and technical archite
 6. [Audit Trail](#6-audit-trail)
 7. [Transaction Pipeline](#7-transaction-pipeline)
 8. [Jupiter Integration](#8-jupiter-integration)
-9. [Multi-Agent Architecture](#9-multi-agent-architecture)
-10. [What Agents Can and Cannot Do](#10-agent-capabilities)
-11. [Threat Model](#11-threat-model)
-12. [Kora Gasless Relay](#12-kora-gasless-relay)
-13. [x402 HTTP Payment Protocol](#13-x402-http-payment-protocol)
-14. [Autonomous Trading Strategy Engine](#14-autonomous-trading-strategy-engine)
+9. [Kora Gasless Relay](#9-kora-gasless-relay)
+10. [x402 HTTP Payment Protocol](#10-x402-http-payment-protocol)
+11. [Autonomous Trading Strategy Engine](#11-autonomous-trading-strategy-engine)
+12. [Multi-Agent Architecture](#12-multi-agent-architecture)
+13. [What Agents Can and Cannot Do](#13-agent-capabilities)
+14. [Threat Model](#14-threat-model)
 
 ---
 
@@ -32,6 +34,8 @@ AI agents that act on Solana need wallets. But a wallet designed for human use i
 - Humans have intent. Agents follow instructions that can be injected.
 
 The goal was to build a wallet that is genuinely useful to agents (autonomous, fast, protocol-capable) while being safe by design — not by hope.
+
+Given these dangers, the first architectural decision was how agents would interact with the wallet at all.
 
 ---
 
@@ -58,6 +62,8 @@ MCP tools, resources, and prompts are declared with titles, descriptions, and an
 ### 2.5 Resources and prompts as first-class primitives
 
 MCP resources let agents read live state (wallet balances, policies, audit logs) without calling a tool — they are read-only and have no side effects. MCP prompts provide pre-built multi-step workflows (`trading-strategy`, `portfolio-rebalance`, `security-audit`) that guide agents through complex operations with built-in safety checks baked in. Neither concept exists in a raw SDK pattern.
+
+With the process boundary established, the next concern is what happens inside `wallet-core` — starting with the keys.
 
 ---
 
@@ -102,7 +108,7 @@ DerivedKey = PBKDF2(HMAC-SHA512, passphrase, salt, 210_000 iterations, 32 bytes)
 
 ### GCM authentication
 
-AES-256-GCM provides both confidentiality and integrity. The 16-byte auth tag prevents silent tampering — if someone modifies the ciphertext on disk, decryption will throw rather than return a corrupted key.
+AES-256-GCM provides both confidentiality and integrity. The 16-byte auth tag prevents silent tampering — if someone modifies the ciphertext on disk, decryption will throw rather than return a corrupted key. For an autonomous system where nobody is watching, this "fail loudly" property is essential.
 
 ### File permissions
 
@@ -111,6 +117,8 @@ After writing a keystore, `chmod 0600` is applied so only the owner process can 
 ### In-memory lifetime
 
 `KeyManager.unlockWallet()` decrypts the key, constructs the `Keypair`, signs the transaction, and returns. The plaintext key bytes are not cached. The GC reclaims them after the signing closure exits.
+
+Encryption protects keys at rest. But the bigger risk with agent wallets is the agent using its legitimate signing authority to do something catastrophic — a compromised prompt, a hallucinated address, a runaway loop. That's where the Policy Engine comes in.
 
 ---
 
@@ -181,6 +189,8 @@ Jupiter swaps use `VersionedTransaction` with address lookup tables (ALTs). Deco
 
 Policy state (attached policies + transaction history) is persisted to `~/.agentic-wallet/policy-state.json`. Rate limit counters survive server restarts — an agent cannot bypass the hourly limit by restarting the MCP server.
 
+The Policy Engine bounds what agents can do within allowed operations. But some operations — like closing a wallet — should be off-limits to agents entirely, regardless of policy.
+
 ---
 
 ## 5. Human-Only Guardrail
@@ -213,6 +223,8 @@ The `close_wallet` tool file is kept in the repo with a prominent warning header
 ### Scope of the pattern
 
 The `HumanOnlyOpts` type and `HUMAN_ONLY` constant are exported from `@agentic-wallet/core` (via `guardrails/human-only.ts`) so they can be applied to any future operations that need the same protection — for example, a future `update_policy` tool that could allow an agent to loosen its own spending limits.
+
+These guardrails prevent bad actions. But for forensics and accountability, every action — allowed or denied — needs to be recorded.
 
 ---
 
@@ -266,9 +278,13 @@ The logger uses `appendFileSync` — it cannot overwrite existing entries. Actio
 
 The `AuditLogger` supports real-time event listeners, which the CLI TUI uses to stream new entries into the logs view without polling.
 
+With the security layers described — key encryption, policy enforcement, human-only guardrails, and audit logging — here's how they compose in the actual transaction flow.
+
 ---
 
 ## 7. Transaction Pipeline
+
+The wallet supports four distinct transaction paths. Each path goes through the same security layers described above but differs in how the transaction is constructed and submitted.
 
 ### Legacy transactions — standard path (agent pays fees)
 
@@ -290,6 +306,8 @@ Tool handler
 ```
 
 ### Legacy transactions — Kora gasless path (Kora pays fees)
+
+When a Kora paymaster node is configured, the wallet can submit transactions where a third party pays the network fees (see [Section 9](#9-kora-gasless-relay) for the full Kora architecture):
 
 ```
 Tool handler
@@ -314,7 +332,9 @@ Tool handler
           → fall through to standard path above
 ```
 
-### Versioned transactions (Jupiter swaps — mainnet only)
+### Versioned transactions (Jupiter swaps)
+
+Jupiter swaps produce `VersionedTransaction` objects with address lookup table compression. These follow a different path because the transaction is pre-built by Jupiter's API (see [Section 8](#8-jupiter-integration) for full details):
 
 ```
 Tool handler
@@ -334,6 +354,8 @@ Tool handler
 
 ### Simulated swaps (Jupiter quotes — devnet / testnet)
 
+On non-mainnet clusters, Jupiter quotes are fetched for real pricing data, but no transaction is built or sent:
+
 ```
 Tool handler
   → JupiterService.simulateSwap()
@@ -343,10 +365,11 @@ Tool handler
   → return SimulatedSwapResult { simulated: true, quote, route, pricing }
 ```
 
-No transaction is built. No on-chain execution. The agent receives accurate
-pricing and routing information it can use for strategy evaluation.
+The agent receives accurate pricing and routing information it can use for strategy evaluation without any on-chain execution.
 
 ### Sweep-and-close (human-initiated only)
+
+This path is only reachable from the CLI — see [Section 5](#5-human-only-guardrail) for the compile-time barrier that prevents agent access:
 
 ```
 CLI confirms 'y' from human
@@ -360,6 +383,8 @@ CLI confirms 'y' from human
       → KeyManager.deleteWallet(walletId)      [keystore file deleted]
       → AuditLogger.log('wallet:closed')
 ```
+
+The transaction pipeline above handles generic Solana transactions. The following sections cover each protocol-specific integration in detail, starting with Jupiter for DEX trading.
 
 ---
 
@@ -398,97 +423,11 @@ This means the full trading loop (`fetch_prices` → `evaluate_strategy` → `sw
 | `maxSlippageBps`     | 300 (3%)  | Agent cannot request more than this        |
 | `maxPriceImpactPct`  | 5%        | Rejects swaps with excessive market impact |
 
----
-
-## 9. Multi-Agent Architecture
-
-The system is designed for multiple independent agents, each with their own wallet:
-
-- **Independent keystores** — each wallet is a separate encrypted file with its own salt/IV
-- **Independent policies** — each wallet has its own spend cap, rate limits, and program allowlist
-- **Independent audit trails** — log entries include `walletId` so per-agent activity is filterable
-- **Shared MCP server** — one server instance manages all wallets; agents are differentiated by the `wallet_id` they supply
-
-The `portfolio-rebalance` prompt demonstrates multi-wallet coordination: it reads all wallet balances, calculates target allocations, and orchestrates `send_sol` calls between wallets.
-
-### AI Agent as Trading Bot
-
-Instead of a standalone bot process, the trading capability is exposed as MCP tools that let any AI agent **become** a trading bot. This is architecturally important: the agent uses the same policy engine, audit trail, and guardrails as any other wallet operation.
-
-**How it works:**
-
-1. `fetch_prices` — calls Jupiter Price API v2, returns real-time USD prices for SOL, USDC, and any mint address
-2. `evaluate_strategy` — runs a named strategy (threshold-rebalance or sma-crossover) against current prices and balances, returns a BUY/SELL/HOLD signal with exact amounts
-3. `swap_tokens` — executes the trade if the signal is not HOLD. On mainnet this is a real on-chain swap (policy-enforced). On devnet it returns a simulated swap with real mainnet pricing — the full trading loop still runs end-to-end.
-
-The `autonomous-trading` prompt ties these together: it instructs the agent to run a multi-tick loop of _fetch → evaluate → swap → log_. Each tick is a full MCP tool call sequence. The agent reports a summary table at the end.
-
-**Available strategies:**
-
-| Strategy              | Logic                                                                                               |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| `threshold-rebalance` | Maintains a target SOL allocation (e.g. 70%); triggers rebalance when drift exceeds a threshold     |
-| `sma-crossover`       | Tracks fast and slow simple moving averages; generates BUY when fast crosses above slow, SELL below |
-
-The SMA strategy maintains per-wallet state across `evaluate_strategy` calls within a server session, so the agent can call it repeatedly and get progressively more accurate signals as the price window fills.
-
-**Key design choices:**
-
-- No separate process — the AI agent IS the bot during a prompted session
-- All swaps go through PolicyEngine — spend caps, rate limits, and slippage bounds still apply
-- All actions are audit-logged — every tick is traceable
-- The `trading://strategies` resource lets the agent self-discover available strategies before running
+Jupiter swaps always require the agent to hold SOL for fees — the fee payer is baked into Jupiter's compiled transaction. The Kora integration addresses this limitation for non-Jupiter transactions.
 
 ---
 
-## 10. What Agents Can and Cannot Do
-
-### Can do (via MCP tools)
-
-- Create wallets (always with devnet safety policy — cannot be skipped)
-- Query balances and wallet state
-- Send SOL and SPL tokens (policy-checked)
-  - With Kora configured: gasless — zero SOL spent on fees by the agent wallet
-  - Without Kora or when Kora is unavailable: standard path, agent pays fees
-- Execute Jupiter swaps (policy-checked, slippage/impact bounded on mainnet; simulated with real pricing on devnet)
-- Write on-chain memos (gasless-capable via Kora)
-- Create and mint SPL tokens
-- Pay for x402-protected HTTP resources using managed wallets
-- Evaluate trading strategies and execute autonomous multi-tick trading loops
-- Read audit logs, system status, policies
-
-### Cannot do
-
-- **Close wallets** — `closeWallet` requires `{ humanInitiated: true }` literal type; no MCP tool can satisfy this
-- **Bypass policies** — policy checks happen inside `WalletService` before signing; tool handlers have no way to skip them
-- **Access raw keypairs** — `KeyManager.unlockWallet()` is not exposed via any tool
-- **Read the passphrase** — `system/config` resource redacts it
-- **Create policy-free wallets** — `create_wallet` always attaches the devnet safety policy; `attach_policy` flag was removed from the MCP tool
-
----
-
-## 11. Threat Model
-
-| Threat                                   | Mitigation                                                                                                                       |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Compromised agent / prompt injection** | Policy engine blocks out-of-limit transactions regardless of what the agent was instructed to do                                 |
-| **Runaway agent loop**                   | Rate limits (30 tx/hr, 200 tx/day) and cooldown (2s) halt runaway execution before significant damage                             |
-| **Large single transaction**             | Per-tx cap (2 SOL default) prevents draining in one call                                                                         |
-| **Gradual drain over time**              | Daily spend cap (10 SOL default) bounds 24h exposure                                                                             |
-| **Agent closing wallets**                | Compile-time `HumanOnlyOpts` guard; `close_wallet` not registered on MCP server                                                  |
-| **Agent loosening its own policy**       | No `update_policy` tool exists; policy changes require direct code access                                                        |
-| **Keystore file exfiltration**           | Keys are AES-256-GCM encrypted; attacker needs the passphrase to decrypt                                                         |
-| **Passphrase brute force**               | PBKDF2 at 210,000 iterations makes brute force computationally expensive                                                         |
-| **Keystore tampering**                   | GCM auth tag detects modification; decryption throws on tampered ciphertext                                                      |
-| **Multiple agents racing**               | Each wallet has its own policy state; per-wallet rate limit tracking prevents cross-wallet interference                          |
-| **Devnet vs mainnet confusion**          | `SOLANA_CLUSTER` defaults to `devnet`; mainnet requires explicit opt-in                                                          |
-| **x402 overspend**                       | Configurable `maxPaymentLamports`; PolicyEngine rate/spend limits enforced before signing x402 payments                          |
-| **Kora node unavailable**                | `WalletService` catches Kora errors and falls through to the standard fee-payer path automatically; no agent downtime            |
-| **Kora signer compromised**              | Kora only co-signs as fee payer; it cannot construct arbitrary instructions — the agent wallet’s keypair still signs the payload |
-
----
-
-## 12. Kora Gasless Relay
+## 9. Kora Gasless Relay
 
 [Kora](https://github.com/solana-foundation/kora) is a Solana Foundation paymaster node referenced directly in this bounty's resource links. It allows a third-party signer to pay network fees on behalf of other wallets. This project integrates Kora as an optional gasless relay, proven end-to-end on devnet.
 
@@ -502,20 +441,20 @@ Agents optimally hold only the tokens they work with — not SOL for gas. Withou
  Agent wallet                 WalletService              Kora node
      │                           │                         │
      │  signAndSendTransaction()  │                         │
-     ├────────────────────────────────┬─────────────────────────│
-     │   build tx, set feePayer   │   getPayerSigner()       │
-     │   = Kora signer address    ├─────────────────────────┤
-     │   partialSign(agentKey)    │   signerAddress          │
-     │   serialize(partial)       └─────────────────────────┘
-     │                           │
-     │                           │  signAndSendTransaction(base64)
-     │                           ├─────────────────────────┤
-     │                           │  Kora: co-signs as feePayer,    │
-     │                           │        validates allowlist,      │
-     │                           │        broadcasts to Solana      │
-     │                           └─────────────────────────┘
-     │  { signature, gasless: true, explorerUrl }
-     └────────────────────────────────┘
+     ├───────────────────────────►│                         │
+     │   build tx, set feePayer   │   getPayerSigner()     │
+     │   = Kora signer address    ├────────────────────────►│
+     │   partialSign(agentKey)    │   signerAddress         │
+     │   serialize(partial)       │◄────────────────────────┤
+     │                            │                         │
+     │                            │  signAndSendTransaction(base64)
+     │                            ├────────────────────────►│
+     │                            │  Kora: co-signs as      │
+     │                            │  feePayer, validates     │
+     │                            │  allowlist, broadcasts   │
+     │                            │◄────────────────────────┤
+     │  { signature, gasless: true, explorerUrl }           │
+     │◄───────────────────────────┤                         │
 ```
 
 ### Configuration (`kora/kora.toml`)
@@ -551,7 +490,7 @@ Kora covers all five **legacy** transaction tools (`Transaction` class). Jupiter
 | `create_token_mint` | Legacy — SPL Token      | ✅                                                                                                                                                                             |
 | `mint_tokens`       | Legacy — SPL Token      | ✅                                                                                                                                                                             |
 | `swap_tokens`       | `VersionedTransaction`  | ❌ Jupiter v6 `/swap` bakes `userPublicKey` as fee payer into the compiled `MessageV0` — there is no `feePayerPublicKey` parameter; the fee payer cannot be swapped post-build |
-| `pay_x402`          | x402 server relay       | ❌ The x402 server broadcasts the transaction after verifying the `X-Payment` header; `WalletService.signAndSendTransaction` is not in the path                                                                  |
+| `pay_x402`          | x402 server relay       | ❌ The x402 server broadcasts the transaction after verifying the `X-Payment` header; `WalletService.signAndSendTransaction` is not in the path                                |
 
 ### Graceful fallback
 
@@ -561,18 +500,22 @@ Kora is **optional**. If `KORA_RPC_URL` is not set, `KoraService.create()` retur
 
 When Kora is active, `TransactionResult.gasless` is `true` and the audit log records `feePayer: "kora"`. The Kora signer address appears as `accountKeys[0]` (fee payer) in the on-chain transaction, proving the agent wallet paid zero fees.
 
+While Kora removes the gas burden for standard transactions, agents also need to interact with paid external services. The x402 integration enables HTTP-native payments for exactly this purpose.
+
 ---
 
-## 13. x402 HTTP Payment Protocol
+## 10. x402 HTTP Payment Protocol
 
 [x402](https://github.com/coinbase/x402) is Coinbase's open standard for HTTP-native payments. A server responds `402 Payment Required`; the client pays on-chain and retries with an `X-Payment` header.
 
 > **Important:** `https://x402.org/protected` runs on Base (EVM). For Solana demos, run a local server:
+>
 > ```bash
 > git clone https://github.com/Woody4618/x402-solana-examples
 > cd x402-solana-examples && npm install
 > npm run usdc:server   # http://localhost:3001
 > ```
+>
 > The paying wallet must hold devnet USDC (mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
 
 ### Flow
@@ -580,14 +523,14 @@ When Kora is active, `TransactionResult.gasless` is `true` and the audit log rec
 ```
 Agent  →  pay_x402(url, wallet_id)
   →  GET url
-  ⊐  HTTP 402 + X-PAYMENT-REQUIRED header  (or JSON body for native servers)
+  ←  HTTP 402 + X-PAYMENT-REQUIRED header  (or JSON body for native servers)
         { amount, asset (USDC mint), payTo (recipient ATA), network: "solana-devnet" }
   →  parse PaymentRequirements
   →  check recipient ATA exists; create inline if not
   →  build SPL Transfer tx  (opcode 3 — plain Transfer, not TransferChecked)
   →  WalletService signs (PolicyEngine checks apply)
   →  GET url, headers: { X-Payment: base64(JSON { serializedTransaction }) }
-  ⊐  HTTP 200 + resource content
+  ←  HTTP 200 + resource content
   →  AuditLogger.log(x402:payment_success)
   →  return { body, amountPaid, settlement }
 ```
@@ -599,9 +542,11 @@ Agent  →  pay_x402(url, wallet_id)
 - The `probe_x402` tool lets an agent discover pricing before committing funds
 - Every payment stage is audit-logged: `x402:payment_signed`, `x402:payment_success`, `x402:payment_failed`
 
+With the foundational protocols in place — Jupiter for DEX access, Kora for gas abstraction, and x402 for paid services — the trading engine combines them into autonomous strategies.
+
 ---
 
-## 14. Autonomous Trading Strategy Engine
+## 11. Autonomous Trading Strategy Engine
 
 Instead of a separate trading bot process, trading capability is exposed as MCP tools so any connected AI agent can act as its own trading bot — using the same policy engine, audit trail, and guardrails as every other wallet operation.
 
@@ -616,10 +561,10 @@ Instead of a separate trading bot process, trading capability is exposed as MCP 
 ### Strategies
 
 **`threshold-rebalance`** — stateless.
-Calc current SOL allocation. If drift from target exceeds threshold, return BUY or SELL for the delta amount. Each call is independent.
+Calculates current SOL allocation. If drift from target exceeds a configurable threshold, returns BUY or SELL for the delta amount. Each call is independent.
 
 **`sma-crossover`** — stateful within a server session.
-Maintains a rolling price history per wallet. Computes fast SMA (e.g. 5-period) and slow SMA (e.g. 20-period). Returns BUY when fast crosses above slow, SELL when it crosses below, HOLD while the window is filling or no crossover has occurred.
+Maintains a rolling price history per wallet. Computes fast SMA (e.g. 5-period) and slow SMA (e.g. 20-period). Returns BUY when fast crosses above slow, SELL when it crosses below, HOLD while the window is filling or no crossover has occurred. Accuracy improves as the price window fills across successive `evaluate_strategy` calls.
 
 ### Multi-tick loop (`autonomous-trading` prompt)
 
@@ -633,4 +578,81 @@ for tick in 1..N:
 agent reports: tick-by-tick table of prices, signals, and executed swaps
 ```
 
-All swaps in the loop still go through `PolicyEngine` — a runaway strategy cannot exceed daily spend caps or hourly rate limits regardless of how many ticks it runs.
+All swaps in the loop still go through `PolicyEngine` — a runaway strategy cannot exceed daily spend caps or hourly rate limits regardless of how many ticks it runs. The `trading://strategies` resource lets agents self-discover available strategies before starting a session.
+
+### Key design choices
+
+- **No separate process** — the AI agent IS the bot during a prompted session
+- **Same guardrails** — all swaps go through PolicyEngine with spend caps, rate limits, and slippage bounds
+- **Full audit trail** — every tick is traceable in the JSONL log
+- **Devnet-compatible** — the loop runs end-to-end on devnet with real pricing; only on-chain settlement is simulated
+
+All of these capabilities — trading, payments, transfers — are designed to work across multiple independent agents simultaneously.
+
+---
+
+## 12. Multi-Agent Architecture
+
+The system is designed for multiple independent agents, each with their own wallet:
+
+- **Independent keystores** — each wallet is a separate encrypted file with its own salt/IV
+- **Independent policies** — each wallet has its own spend cap, rate limits, and program allowlist
+- **Independent audit trails** — log entries include `walletId` so per-agent activity is filterable
+- **Shared MCP server** — one server instance manages all wallets; agents are differentiated by the `wallet_id` they supply
+
+There is no shared state between wallets beyond the server process. If wallet A gets compromised through prompt injection, wallet B's funds and limits are completely unaffected.
+
+The `portfolio-rebalance` prompt demonstrates multi-wallet coordination: it reads all wallet balances, calculates target allocations, and orchestrates `send_sol` calls between wallets — each transfer individually policy-checked.
+
+With the architecture and all integrations described, here is the complete picture of what agents can and cannot do.
+
+---
+
+## 13. What Agents Can and Cannot Do
+
+### Can do (via MCP tools)
+
+- Create wallets (always with devnet safety policy — cannot be skipped)
+- Query balances and wallet state
+- Send SOL and SPL tokens (policy-checked)
+  - With Kora configured: gasless — zero SOL spent on fees by the agent wallet
+  - Without Kora or when Kora is unavailable: standard path, agent pays fees
+- Execute Jupiter swaps (policy-checked, slippage/impact bounded on mainnet; simulated with real pricing on devnet)
+- Write on-chain memos (gasless-capable via Kora)
+- Create and mint SPL tokens
+- Pay for x402-protected HTTP resources using managed wallets
+- Evaluate trading strategies and execute autonomous multi-tick trading loops
+- Read audit logs, system status, policies
+
+### Cannot do
+
+- **Close wallets** — `closeWallet` requires `{ humanInitiated: true }` literal type; no MCP tool can satisfy this
+- **Bypass policies** — policy checks happen inside `WalletService` before signing; tool handlers have no way to skip them
+- **Access raw keypairs** — `KeyManager.unlockWallet()` is not exposed via any tool
+- **Read the passphrase** — `system/config` resource redacts it
+- **Create policy-free wallets** — `create_wallet` always attaches the devnet safety policy; `attach_policy` flag was removed from the MCP tool
+
+These capability boundaries map directly to the threat model the system is designed to defend against.
+
+---
+
+## 14. Threat Model
+
+| Threat                                   | Mitigation                                                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Compromised agent / prompt injection** | Policy engine blocks out-of-limit transactions regardless of what the agent was instructed to do                                 |
+| **Runaway agent loop**                   | Rate limits (30 tx/hr, 200 tx/day) and cooldown (2s) halt runaway execution before significant damage                            |
+| **Large single transaction**             | Per-tx cap (2 SOL default) prevents draining in one call                                                                         |
+| **Gradual drain over time**              | Daily spend cap (10 SOL default) bounds 24h exposure                                                                             |
+| **Agent closing wallets**                | Compile-time `HumanOnlyOpts` guard; `close_wallet` not registered on MCP server                                                  |
+| **Agent loosening its own policy**       | No `update_policy` tool exists; policy changes require direct code access                                                        |
+| **Keystore file exfiltration**           | Keys are AES-256-GCM encrypted; attacker needs the passphrase to decrypt                                                         |
+| **Passphrase brute force**               | PBKDF2 at 210,000 iterations makes brute force computationally expensive                                                         |
+| **Keystore tampering**                   | GCM auth tag detects modification; decryption throws on tampered ciphertext                                                      |
+| **Multiple agents racing**               | Each wallet has its own policy state; per-wallet rate limit tracking prevents cross-wallet interference                          |
+| **Devnet vs mainnet confusion**          | `SOLANA_CLUSTER` defaults to `devnet`; mainnet requires explicit opt-in                                                          |
+| **x402 overspend**                       | Configurable `maxPaymentLamports`; PolicyEngine rate/spend limits enforced before signing x402 payments                          |
+| **Kora node unavailable**                | `WalletService` catches Kora errors and falls through to the standard fee-payer path automatically; no agent downtime            |
+| **Kora signer compromised**              | Kora only co-signs as fee payer; it cannot construct arbitrary instructions — the agent wallet's keypair still signs the payload |
+
+Every layer — encryption, policy enforcement, type-level guardrails, audit logging, schema validation, process isolation — independently limits the blast radius. The system does not rely on any single defense holding; it is designed so that any one layer can fail and the remaining layers still contain the damage.
