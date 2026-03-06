@@ -312,30 +312,3 @@ A few things we'd do differently, or almost got wrong:
 **The MCP boundary paid off more than expected.** We originally chose MCP for ecosystem compatibility — write one server, support every agent framework. But the hard process boundary turned out to be the real win. The agent can't reach into `WalletService` internals, can't call `KeyManager.unlockWallet()` directly, and can't touch any method that isn't explicitly declared as a tool. We got a security boundary for free while solving a compatibility problem.
 
 **Agents need a manual, not just an API.** We wrote `SKILLS.md` — a structured document that agents read before acting. It covers what they can do, what they can't, safety rules, and common workflows. The difference between "here are 16 tools, figure it out" and "read this manual first" was night and day. Fewer errors, fewer forbidden operations, more reliable multi-step workflows.
-
----
-
-## Try It Yourself
-
-The entire system is open source and runs on Solana devnet:
-
-```bash
-git clone https://github.com/xavierScript/agentic_wallet.git
-cd agentic_wallet
-pnpm install && pnpm build && pnpm cli
-```
-
-Or with Docker:
-
-```bash
-docker compose up cli
-```
-
-Connect any MCP-compatible AI (Claude Desktop, VS Code Copilot, Cursor) and tell it:
-
-> "Read SKILLS.md, then create a wallet, airdrop 1 SOL, and send 0.01 SOL to yourself as a test."
-
----
-
-_Full source: [github.com/xavierScript/agentic_wallet](https://github.com/xavierScript/agentic_wallet)_
-_28 demo prompts: [DEMO-PROMPTS.md](https://github.com/xavierScript/agentic_wallet/blob/main/DEMO-PROMPTS.md)_

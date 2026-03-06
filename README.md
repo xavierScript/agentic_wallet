@@ -16,7 +16,7 @@
 |                                   |                                                                                              |
 | --------------------------------- | -------------------------------------------------------------------------------------------- |
 | 📹 **Video Deep Dive**            | [Watch on YouTube](https://www.youtube.com/playlist?list=PL0SN_TTIhgAUG_kiUNZd4crZruk12ZTUk) |
-| 📝 **Wallet Design and Security** | [ARTICLE.md](ARTICLE.md)\_                                                                   |
+| 📝 **Wallet Design and Security** | [ARTICLE.md](ARTICLE.md)                                                                     |
 | 🎮 **28 Copy-Paste Prompts**      | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                           |
 | 🤖 **Agent Skills Manual**        | [SKILLS.md](SKILLS.md)                                                                       |
 
