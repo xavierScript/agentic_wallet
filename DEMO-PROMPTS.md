@@ -26,7 +26,7 @@ Everything is exposed as standard MCP tools, resources, and prompts — no custo
 ## Prerequisites
 
 1. Complete the setup in [`skills/references/setup.md`](skills/references/setup.md)
-2. Ensure `.env` contains `WALLET_PASSPHRASE`, `SOLANA_RPC_URL`, and `MASTER_WALLET_SECRET_KEY`
+2. Ensure `.env` contains `WALLET_PASSPHRASE` and `SOLANA_RPC_URL`. For master wallet auto-funding, use `MASTER_WALLET_KEY_LABEL` (recommended — run `pnpm key:import` once to encrypt the key into the keystore). For quick testing you can use `MASTER_WALLET_SECRET_KEY=<base58-key>` directly — remove it after testing
 3. **For gasless demos (prompts 26–28):** start a local Kora node — see [`kora/README.md`](kora/README.md) for setup. Set `KORA_RPC_URL=http://localhost:8080` in `.env`
 4. Run `pnpm build` and connect the MCP server to an AI agent client
 5. The server targets **Solana devnet** by default — no real funds are at risk
