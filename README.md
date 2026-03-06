@@ -13,13 +13,13 @@
 
 ## Demo
 
-|                                |                                       |
-| ------------------------------ | ------------------------------------- |
-| 📹 **Video Deep Dive**         | [Watch on YouTube](#) _(link coming)_ |
-| 📝 **Written Article**         | [Read the article](#) _(link coming)_ |
-| 🔍 **Architecture & Security** | [DEEP-DIVE.md](DEEP-DIVE.md)          |
-| 🎮 **28 Copy-Paste Prompts**   | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)    |
-| 🤖 **Agent Skills Manual**     | [SKILLS.md](SKILLS.md)                |
+|                                |                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------- |
+| 📹 **Video Deep Dive**         | [Watch on YouTube](https://www.youtube.com/playlist?list=PL0SN_TTIhgAUG_kiUNZd4crZruk12ZTUk) |
+| 📝 **Written Article**         | [Read the article](#) _(link coming)_                                                        |
+| 🔍 **Architecture & Security** | [DEEP-DIVE.md](DEEP-DIVE.md)                                                                 |
+| 🎮 **28 Copy-Paste Prompts**   | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                           |
+| 🤖 **Agent Skills Manual**     | [SKILLS.md](SKILLS.md)                                                                       |
 
 <table>
   <tr>
