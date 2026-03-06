@@ -28,7 +28,7 @@
   </tr>
   <tr>
     <td align="center"><em>TUI — live wallet state and audit log</em></td>
-    <td align="center"><em>Gemini CLI connected via MCP</em></td>
+    <td align="center"><em>Gemini CLI Agent connected via MCP</em></td>
   </tr>
   <!-- <tr>
     <td><img src="images/screenshot-audit.png" alt="Append-only audit trail" /></td>
