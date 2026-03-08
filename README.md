@@ -20,6 +20,8 @@
 | 🎮 **28 Copy-Paste Prompts**      | [DEMO-PROMPTS.md](DEMO-PROMPTS.md)                                                           |
 | 🤖 **Agent Skills Manual**        | [SKILLS.md](SKILLS.md)                                                                       |
 
+<p align="center"><em>The screenshots below demonstrate that the MCP server works with any AI agent.</em></p>
+
 <table>
   <tr>
     <td><img src="images/screenshot-tui.png" alt="TUI — operator dashboard" /></td>
@@ -27,16 +29,16 @@
   </tr>
   <tr>
     <td align="center"><em>TUI — live wallet state and audit log</em></td>
-    <td align="center"><em>Gemini CLI Agent connected via MCP</em></td>
-  </tr>
-  <!-- <tr>
-    <td><img src="images/screenshot-audit.png" alt="Append-only audit trail" /></td>
-    <td><img src="images/screenshot-policy.png" alt="Policy engine blocking an over-limit transfer" /></td>
+    <td align="center"><em>Gemini CLI Agent connected via MCP, creating wallets</em></td>
   </tr>
   <tr>
-    <td align="center"><em>Append-only audit trail</em></td>
-    <td align="center"><em>Policy engine blocking an over-limit transfer</em></td>
-  </tr> -->
+    <td><img src="images/screenshot-cursor.png" alt="cursor agent creating a wallet" /></td>
+    <td><img src="images/screenshot-claude.png" alt="claude agent viewing created wallets" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Cursor Agent connected via MCP, creating wallets</em></td>
+    <td align="center"><em>Claude Desktop Agent connected via MCP, viewing created wallets</em></td>
+  </tr>
 </table>
 
 ---
